@@ -30,6 +30,8 @@ header{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 header h1{font-size:24px;flex:1}
 .pill{font-size:13px;color:var(--mute)}
 .seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:3px;gap:3px;margin-bottom:10px}
+.seg.small{margin-top:-4px}.seg.small button{font-size:13px;min-height:36px;white-space:nowrap;padding:0 4px}
+.autostat .tag{font-size:12px;padding:2px 7px;margin-left:6px}
 .seg button{flex:1;border:0;background:none;min-height:38px;font-size:15px}
 .seg button[aria-pressed=true]{background:var(--ink);color:var(--bg);font-weight:600}
 .cam{position:relative;aspect-ratio:3/4;max-height:58vh;width:100%;border-radius:18px;overflow:hidden;background:#000;border:1px solid var(--line)}
@@ -42,6 +44,17 @@ header h1{font-size:24px;flex:1}
 .row{display:flex;gap:8px;margin-top:10px}
 .row>*{flex:1}
 .shoot{background:var(--ink);color:var(--bg);font-weight:700;font-size:18px;min-height:56px;border:0}
+.toggles{display:flex;gap:8px;margin-top:8px}
+.toggles button{flex:1;font-size:15px}
+.toggles button[aria-pressed=true]{border-color:var(--gold);color:var(--gold);font-weight:600}
+.autostat{position:absolute;left:0;right:0;top:0;padding:8px 12px;font-size:14px;font-weight:600;background:linear-gradient(rgba(0,0,0,.65),transparent);color:#fff;display:none}
+.autostat.on{display:block}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 2px}
+.chips button{min-height:40px;font-size:14px;padding:0 12px}
+.chips button[aria-pressed=true]{background:var(--ink);color:var(--bg);font-weight:600;border-color:var(--ink)}
+.chiplab{font-size:13px;color:var(--mute);margin-top:8px}
+.prices tr.dim td{color:var(--mute);opacity:.6}
+.prices tr.sel td{font-weight:600}
 .manual{display:flex;gap:8px;margin-top:10px}
 .manual input{flex:1;min-height:44px;border-radius:12px;border:1px solid var(--line);background:var(--panel);padding:0 12px;font-size:16px}
 .result{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:14px;display:none}
@@ -92,6 +105,12 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
     <button data-g="poke" aria-pressed="false">Pokémon</button>
     <button data-g="ygo" aria-pressed="false">Yu-Gi-Oh!</button>
   </div>
+  <div class="seg small" role="group" aria-label="Pokémon card type" id="varSeg">
+    <button data-v="any" aria-pressed="true">Any</button>
+    <button data-v="Non-Holo" aria-pressed="false">Non-Holo</button>
+    <button data-v="Holo" aria-pressed="false">Holo</button>
+    <button data-v="Reverse Holo" aria-pressed="false">Reverse</button>
+  </div>
 
   <div class="cam" id="cam">
     <video id="video" playsinline muted></video>
@@ -99,9 +118,14 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
     <div class="camoff" id="camOff">Tap <b>&nbsp;Start camera&nbsp;</b> or use <b>&nbsp;Photo&nbsp;</b>.</div>
     <div class="guide"><span>Fill the box with the card, keep it flat and well lit</span></div>
     <div class="busy" id="busy">Reading card…</div>
+    <div class="autostat" id="autoStat">Auto-scan: looking for a card…</div>
   </div>
   <div class="row">
     <button class="shoot" id="shoot">Start camera</button>
+  </div>
+  <div class="toggles">
+    <button id="autoBtn" aria-pressed="false">Auto-scan off</button>
+    <button id="soundBtn" aria-pressed="true">Sound on</button>
   </div>
   <div class="row">
     <label class="file" style="flex:1"><button id="photoBtn" style="width:100%">Photo / gallery</button>
@@ -175,14 +199,15 @@ const Core = (() => {
     for (const r of rows.slice(h + 1)) {
       if (!r[iC] || !r[iN]) continue;
       const code = normCode(r[iC]), q = +r[iQ] || 1; total += q;
-      const e = codes[code] || (codes[code] = { n: r[iN], s: r[iS] || '', q: 0, f: [], p: [], r: r[iR] || '', m: 0 });
+      const e = codes[code] || (codes[code] = { n: r[iN], s: r[iS] || '', q: 0, f: [], p: [], r: r[iR] || '', rs: {}, m: 0 });
       e.q += q;
+      if (r[iR]) e.rs[r[iR]] = (e.rs[r[iR]] || 0) + q;
       if (r[iF] && !e.f.includes(r[iF])) e.f.push(r[iF]);
       if (r[iP] && !e.p.includes(r[iP])) e.p.push(r[iP]);
       e.m = Math.max(e.m, parseFloat(r[iM]) || 0);
       const k = normName(r[iN]); names[k] = (names[k] || 0) + q;
     }
-    return { codes, names, total, unique: Object.keys(codes).length, at: Date.now() };
+    return { v: 2, codes, names, total, unique: Object.keys(codes).length, at: Date.now() };
   }
 
   // Poke Card Values xlsx -> rows (array of arrays from SheetJS)
@@ -265,7 +290,40 @@ const Core = (() => {
   }
   const nameInText = (name, text) => (' ' + normName(text) + ' ').includes(' ' + normName(name).split(' ')[0] + ' ');
 
-  return { digitVariants, nameInText, normName, normCode, normNum, parseCsv, parseYgo, parsePoke, ygoCodes, pokeNums, pokeOwned, pokeNameFromText };
+  // YGOPRODeck rarity name -> Dragon Shield rarity code
+  const RAR = { 'common': 'C', 'short print': 'SP', 'super short print': 'SSP', 'rare': 'R', 'super rare': 'SR', 'ultra rare': 'UR',
+    'secret rare': 'ScR', 'ultimate rare': 'UtR', 'ghost rare': 'GR', 'gold rare': 'GUR', 'gold secret rare': 'GScR',
+    'ghost gold rare': 'GGR', 'premium gold rare': 'PGR', 'platinum rare': 'PlR', 'platinum secret rare': 'PlScR',
+    'prismatic secret rare': 'PScR', "collector's rare": 'CR', 'quarter century secret rare': 'QCScR', 'starlight rare': 'StR',
+    'starfoil rare': 'SFR', 'mosaic rare': 'MSR', 'shatterfoil rare': 'SHR', 'ultra parallel rare': 'UPR',
+    'duel terminal ultra parallel rare': 'DUPR', 'duel terminal rare parallel rare': 'DRPR', 'duel terminal normal parallel rare': 'DNPR',
+    'extra secret rare': 'EScR', '10000 secret rare': '10000ScR', 'secret pharaoh\'s rare': 'SPhR' };
+  const rarCode = (name, code) => RAR[String(name || '').toLowerCase()] || String(code || '').replace(/[()]/g, '') ||
+    String(name || '').split(/\s+/).map(w => w[0]).join('').toUpperCase();
+
+  // Pokémon variants as Poke Card Values names them
+  const VARS = [['normal', 'Non-Holo'], ['holo', 'Holo'], ['reverse', 'Reverse Holo']];
+  function pokeVariants(card) {
+    const v = card.variants;
+    const list = VARS.filter(([k]) => !v || v[k]).map(([, l]) => l);
+    return list.length ? list : VARS.map(([, l]) => l);
+  }
+  // price rows per variant: [variant, label, priceInCurrency, currency]
+  function pokePriceRows(card) {
+    const pr = card.pricing || {}, cm = pr.cardmarket, tp = pr.tcgplayer, out = [];
+    const v = card.variants || {}, base = v.holo && !v.normal ? 'Holo' : 'Non-Holo';
+    if (cm && cm.trend) out.push([base, 'Cardmarket trend', cm.trend, 'EUR']);
+    if (cm && cm['trend-holo'] && (!card.variants || v.reverse)) out.push(['Reverse Holo', 'Cardmarket trend', cm['trend-holo'], 'EUR']);
+    if (tp) for (const [k, x] of Object.entries(tp)) {
+      if (!x || !x.marketPrice) continue;
+      const vr = /reverse/.test(k) ? 'Reverse Holo' : /holo/.test(k) ? 'Holo' : /normal/.test(k) ? 'Non-Holo' : base;
+      const ed = /1st/.test(k) ? ' (1st edition)' : '';
+      out.push([vr, 'TCGplayer' + ed, x.marketPrice, 'USD']);
+    }
+    return out;
+  }
+
+  return { rarCode, pokeVariants, pokePriceRows, digitVariants, nameInText, normName, normCode, normNum, parseCsv, parseYgo, parsePoke, ygoCodes, pokeNums, pokeOwned, pokeNameFromText };
 })();
 if (typeof module !== 'undefined') module.exports = Core;
 </script>
@@ -273,7 +331,7 @@ if (typeof module !== 'undefined') module.exports = Core;
 {
 const $ = s => document.querySelector(s);
 const FALLBACK = { USD: 0.76, EUR: 0.84 };
-let state = { game: 'auto', thr: 1, poke: null, ygo: null, added: {}, fx: null, sets: null, hist: [] };
+let state = { game: 'auto', variant: 'any', sound: true, thr: 1, poke: null, ygo: null, added: {}, fx: null, sets: null, hist: [] };
 
 /* ---------- storage (IndexedDB, with graceful failure) ---------- */
 const db = (() => {
@@ -396,17 +454,25 @@ async function ygoLookup(codes) {
   }
   return null;
 }
-async function ygoPrice(hit) {
-  const r = await fx(), out = [];
-  const sp = hit.info && parseFloat(hit.info.set_price);
-  if (sp > 0) out.push(['TCGplayer, this printing', sp * r.USD]);
-  if (!sp && hit.info) {
-    try { const d = await getJSON('https://db.ygoprodeck.com/api/v7/cardinfo.php?id=' + hit.info.id);
-          const cp = d.data[0].card_prices[0];
-          if (+cp.cardmarket_price) out.push(['Cardmarket, cheapest printing', cp.cardmarket_price * r.EUR]);
-          if (+cp.tcgplayer_price) out.push(['TCGplayer, cheapest printing', cp.tcgplayer_price * r.USD]); } catch {}
+const ygoCache = {};
+async function ygoDetails(hit) {      // all rarities printed under this set code, with prices
+  const r = await fx(), id = hit.info && hit.info.id;
+  let d = null;
+  if (id) try { d = ygoCache[id] || (ygoCache[id] = (await getJSON('https://db.ygoprodeck.com/api/v7/cardinfo.php?id=' + id)).data[0]); } catch {}
+  const seen = {}, rar = [];
+  for (const s of (d ? d.card_sets || [] : [])) {
+    if (Core.normCode(s.set_code) !== hit.code) continue;
+    const code = Core.rarCode(s.set_rarity, s.set_rarity_code);
+    if (seen[code]) continue; seen[code] = 1;
+    rar.push({ code, name: s.set_rarity, gbp: +s.set_price > 0 ? s.set_price * r.USD : null });
   }
-  return out;
+  if (!rar.length && hit.info) rar.push({ code: Core.rarCode(hit.info.set_rarity, ''), name: hit.info.set_rarity, gbp: +hit.info.set_price > 0 ? hit.info.set_price * r.USD : null });
+  if (!rar.length && hit.owned) for (const k of Object.keys(hit.owned.rs || {})) rar.push({ code: k, name: k, gbp: null });
+  const cheap = [];
+  if (d && d.card_prices) { const cp = d.card_prices[0];
+    if (+cp.cardmarket_price) cheap.push(['Cardmarket, cheapest printing', cp.cardmarket_price * r.EUR]);
+    if (+cp.tcgplayer_price) cheap.push(['TCGplayer, cheapest printing', cp.tcgplayer_price * r.USD]); }
+  return { rar, cheap, img: id };
 }
 
 async function pokeSets() {
@@ -426,24 +492,94 @@ async function pokeCandidates(n) {
   briefs = briefs.filter(b => Core.normNum(b.localId) === Core.normNum(n.local) || (n.promo && /p$|promo/i.test(b.id.split('-')[0])));
   return (await Promise.all(briefs.slice(0, 8).map(b => getJSON('https://api.tcgdex.net/v2/en/cards/' + b.id).catch(() => null)))).filter(Boolean);
 }
-async function pokePrice(card) {
-  const r = await fx(), pr = card.pricing || {}, out = [], cm = pr.cardmarket, tp = pr.tcgplayer;
-  if (cm) {
-    if (cm.trend) out.push(['Cardmarket trend, normal', cm.trend * r.EUR]);
-    if (cm['trend-holo']) out.push(['Cardmarket trend, holo/reverse', cm['trend-holo'] * r.EUR]);
-  }
-  if (tp) for (const [k, v] of Object.entries(tp)) if (v && v.marketPrice)
-    out.push(['TCGplayer, ' + k.replace(/-/g, ' '), v.marketPrice * r.USD]);
-  return out;
+/* ---------- sound ---------- */
+let actx = null;
+function audio() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch {} return actx; }
+function tone(freqs, gap, dur, vol = .35) {
+  const a = audio(); if (!a || !state.sound) return;
+  const t0 = a.currentTime + .02;
+  freqs.forEach((f, i) => {
+    for (const [mult, v] of [[1, vol], [2.76, vol * .18]]) {      // bell = tone + inharmonic overtone
+      const o = a.createOscillator(), g = a.createGain(), t = t0 + i * gap;
+      o.type = 'sine'; o.frequency.value = f * mult;
+      g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(v, t + .008); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + .05);
+    }
+  });
+}
+const dingNew = () => { tone([1318], 0, .9); try { navigator.vibrate && navigator.vibrate(120); } catch {} };
+const dingGold = () => { tone([988, 1319, 1976], .11, .7); try { navigator.vibrate && navigator.vibrate([90, 60, 90, 60, 160]); } catch {} };
+function alertFor(v) { if (v.best >= state.thr) dingGold(); else if (!v.owned) dingNew(); }
+
+/* ---------- current result, re-rendered when a type/rarity chip is tapped ---------- */
+let cur = null;
+const isAdded = (k, sel) => state.added[k + '|' + (sel || 'any')] || state.added[k + '|any'];
+
+function ygoView(c) {
+  const { hit, det } = c, own = hit.owned, opts = det.rar;
+  const sel = c.sel || (opts.length === 1 ? opts[0].code : null);
+  const name = hit.info ? hit.info.name : own.n, key = 'Y:' + hit.code;
+  let qty = 0;
+  if (own) qty = sel && own.rs && Object.keys(own.rs).length ? (own.rs[sel] || 0) : own.q;
+  if (!qty && isAdded(key, sel)) qty = 1;
+  const rows = opts.filter(o => o.gbp != null).map(o => ({ k: o.name + ' (TCGplayer)', v: o.gbp, cls: sel ? (o.code === sel ? 'sel' : 'dim') : '' }));
+  let best = sel ? ((opts.find(o => o.code === sel) || {}).gbp || 0) : Math.max(0, ...opts.map(o => o.gbp || 0));
+  if (!rows.length || (sel && !best)) { det.cheap.forEach(([k, v]) => rows.push({ k, v, cls: '' })); if (!best) best = Math.max(0, ...det.cheap.map(x => x[1])); }
+  const ownRar = own && own.rs ? Object.entries(own.rs).map(([r, q]) => r + (q > 1 ? ' ×' + q : '')).join(', ') : '';
+  const otherPrint = !own && state.ygo && state.ygo.names[Core.normName(name)];
+  const html = `<div class="res-top">${det.img ? `<img src="https://images.ygoprodeck.com/images/cards_small/${det.img}.jpg" alt="">` : ''}<div><h2>${esc(name)}</h2>
+    <div class="sub">${esc(hit.code)} · ${esc(hit.info ? hit.info.set_name : own.s)}${sel ? ' · ' + esc((opts.find(o => o.code === sel) || {}).name || sel) : ''}</div></div></div>
+    ${opts.length > 1 ? `<div class="chiplab">${sel ? 'Rarity' : 'Which rarity is it? This code was printed in ' + opts.length}</div>
+      <div class="chips">${opts.map(o => `<button data-sel="${esc(o.code)}" aria-pressed="${o.code === sel}">${esc(o.name)}</button>`).join('')}</div>` : ''}
+    ${verdictHtml(qty, best, !rows.length, !sel && opts.length > 1)}
+    ${priceTable(rows)}
+    ${own ? `<p class="note">You have ${esc(ownRar || own.q)} · in ${esc(own.f.slice(0, 3).join(', '))}${own.f.length > 3 ? '…' : ''} (${esc(own.p.join(', '))}). Dragon Shield value: ${own.m.toFixed(2)}</p>` : ''}
+    ${otherPrint ? `<p class="note">You have ${otherPrint} of this card from other sets, but not this printing.</p>` : ''}
+    ${!qty ? addBtn(key, sel) : ''}`;
+  return { html, key, name, code: hit.code + (sel ? ' ' + sel : ''), owned: qty, best };
 }
 
-/* ---------- resolve + render ---------- */
-async function resolve(found, text) {
+function pokeView(c) {
+  const { card, n } = c, opts = Core.pokeVariants(card);
+  const pref = state.variant !== 'any' && opts.includes(state.variant) ? state.variant : null;
+  const sel = c.sel || pref || (opts.length === 1 ? opts[0] : null);
+  const numKey = n && n.total ? n.key : Core.normNum(card.localId + '/' + card.set.cardCount.official);
+  const all = Core.pokeOwned(state.poke, numKey, card.name), key = 'P:' + numKey + ':' + Core.normName(card.name);
+  const mine = sel ? all.filter(r => r.h === sel) : all;
+  const qty = mine.reduce((a, r) => a + r.q, 0) || (isAdded(key, sel) ? 1 : 0);
+  const r = state.fx || FALLBACK;
+  const rows = Core.pokePriceRows(card).map(([v, src, p, cur]) => ({ v: p * r[cur], k: `${v} · ${src}`, cls: sel ? (v === sel ? 'sel' : 'dim') : '', vr: v }));
+  const pool = sel ? rows.filter(x => x.vr === sel) : rows, best = Math.max(0, ...pool.map(x => x.v));
+  const num = `${card.localId}/${card.set.cardCount.official}`;
+  const html = `<div class="res-top"><img src="${esc(card.image)}/low.webp" alt=""><div><h2>${esc(card.name)}</h2>
+    <div class="sub">${esc(num)} · ${esc(card.set.name)}${card.rarity ? ' · ' + esc(card.rarity) : ''}</div></div></div>
+    ${opts.length > 1 ? `<div class="chiplab">${sel ? 'Type' : 'Which type is it?'}</div>
+      <div class="chips">${opts.map(o => `<button data-sel="${esc(o)}" aria-pressed="${o === sel}">${esc(o)}</button>`).join('')}</div>` : ''}
+    ${verdictHtml(qty, best, !pool.length, !sel && opts.length > 1)}
+    ${priceTable(rows)}
+    ${all.length ? `<p class="note">You have: ${esc(all.map(x => `${x.h}${x.q > 1 ? ' ×' + x.q : ''} (${gbp(x.v)})`).join(', '))}</p>` : ''}
+    ${!qty ? addBtn(key, sel) : ''}`;
+  return { html, key, name: card.name, code: num + (sel ? ' ' + sel : ''), owned: qty, best };
+}
+
+function renderCur(fresh) {
+  const v = cur.game === 'ygo' ? ygoView(cur) : pokeView(cur);
+  show(v.html, fresh);
+  log({ key: v.key, name: v.name, code: v.code, isNew: !v.owned, best: v.best });
+  if (fresh) alertFor(v);
+  if (fresh && auto) { lastBanner = Date.now(); $('#autoStat').innerHTML = `${esc(v.name)}${v.owned ? '<span class="tag t-own">owned</span>' : '<span class="tag t-new">NEW</span>'}${v.best >= state.thr ? `<span class="tag t-gold">${gbp(v.best)}</span>` : ''}`; }
+  return v;
+}
+async function showYgo(hit) { await fx(); cur = { game: 'ygo', hit, det: await ygoDetails(hit), sel: null }; return renderCur(true); }
+async function showPoke(card, n) { await fx(); cur = { game: 'poke', card, n, sel: null }; return renderCur(true); }
+
+/* ---------- resolve ---------- */
+async function resolve(found, text, quiet) {
   const tries = [];
   if (found.ygo.length) tries.push('ygo');
   if (found.poke.length) tries.push('poke');
   for (const g of tries) {
-    if (g === 'ygo') { const hit = await ygoLookup(found.ygo); if (hit) return renderYgo(hit, await ygoPrice(hit)); }
+    if (g === 'ygo') { const hit = await ygoLookup(found.ygo); if (hit) return showYgo(hit); }
     else {
       for (let n of found.poke) {
         let cands = await pokeCandidates(n).catch(() => []);
@@ -456,74 +592,44 @@ async function resolve(found, text) {
           }
         }
         if (byName.length) cands = byName;
-        if (cands.length === 1) return renderPoke(cands[0], n);
-        if (cands.length > 1) return renderChoice(cands, n);
-        const guess = Core.pokeNameFromText(state.poke, n.key, text);
-        return renderPokeOffline(n, guess);
+        if (cands.length === 1) return showPoke(cands[0], n);
+        if (cands.length > 1) { renderChoice(cands, n); return { choice: true }; }
+        if (quiet) continue;
+        renderPokeOffline(n, Core.pokeNameFromText(state.poke, n.key, text)); return null;
       }
     }
   }
+  if (quiet) return null;
   showError(found.ygo.length || found.poke.length
     ? `Read “${[...found.ygo, ...found.poke.map(p => p.local + (p.total ? '/' + p.total : ''))].slice(0, 3).join(', ')}” but couldn't find that card. Check it and type it below.`
     : "Couldn't spot a set code or card number. Get closer to the bottom of the card, or type it below.");
+  return null;
 }
 
-function verdict(isOwned, best, unknownPrice) {
+function verdictHtml(owned, best, unknownPrice, unsure) {
   const t = [];
-  t.push(isOwned ? `<span class="tag t-own">In collection${isOwned > 1 ? ' ×' + isOwned : ''}</span>` : '<span class="tag t-new">NEW – not in collection</span>');
-  if (best >= state.thr) t.push(`<span class="tag t-gold">Worth ${gbp(best)} – over £${state.thr}</span>`);
+  t.push(owned ? `<span class="tag t-own">In collection${owned > 1 ? ' ×' + owned : ''}</span>` : '<span class="tag t-new">NEW – not in collection</span>');
+  if (best >= state.thr) t.push(`<span class="tag t-gold">${unsure ? 'Up to ' : 'Worth '}${gbp(best)} – over £${state.thr}</span>`);
   else if (unknownPrice) t.push('<span class="tag t-warn">No price found</span>');
   return `<div class="tags">${t.join('')}</div>`;
 }
-const priceTable = rows => rows.length ? `<table class="prices">${rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${gbp(v)}</td></tr>`).join('')}</table>` : '';
+const priceTable = rows => rows.length ? `<table class="prices">${rows.map(x => `<tr class="${x.cls || ''}"><td>${esc(x.k)}</td><td>${gbp(x.v)}</td></tr>`).join('')}</table>` : '';
 
-function renderYgo(hit, prices) {
-  const key = 'Y:' + hit.code, own = hit.owned, added = state.added[key];
-  const name = hit.info ? hit.info.name : own.n, best = Math.max(0, ...prices.map(p => p[1]));
-  const ownedQty = own ? own.q : (added ? 1 : 0);
-  const otherPrint = !own && state.ygo && state.ygo.names[Core.normName(name)];
-  const img = hit.info ? `<img src="https://images.ygoprodeck.com/images/cards_small/${hit.info.id}.jpg" alt="">` : '';
-  show(`<div class="res-top">${img}<div><h2>${esc(name)}</h2>
-    <div class="sub">${esc(hit.code)} · ${esc(hit.info ? hit.info.set_name : own.s)}${hit.info && hit.info.set_rarity ? ' · ' + esc(hit.info.set_rarity) : ''}</div></div></div>
-    ${verdict(ownedQty, best, !prices.length)}
-    ${priceTable(prices)}
-    ${own ? `<p class="note">In: ${esc(own.f.slice(0, 3).join(', '))}${own.f.length > 3 ? '…' : ''} (${esc(own.p.join(', '))}). Dragon Shield value: ${own.m.toFixed(2)}</p>` : ''}
-    ${otherPrint ? `<p class="note">You have ${otherPrint} of this card from other sets, but not this printing.</p>` : ''}
-    ${!own ? addBtn(key) : ''}`);
-  log({ key, name, code: hit.code, isNew: !ownedQty, best });
-}
-
-function pokeOwnedRows(card, n) {
-  const key = n ? n.key : Core.normNum(card.localId + '/' + card.set.cardCount.official);
-  return { key, rows: Core.pokeOwned(state.poke, key, card.name) };
-}
-async function renderPoke(card, n) {
-  const prices = await pokePrice(card), best = Math.max(0, ...prices.map(p => p[1]));
-  const { key, rows } = pokeOwnedRows(card, n), k = 'P:' + key + ':' + Core.normName(card.name);
-  const qty = rows.reduce((a, r) => a + r.q, 0) || (state.added[k] ? 1 : 0);
-  const num = `${card.localId}/${card.set.cardCount.official}`;
-  show(`<div class="res-top"><img src="${esc(card.image)}/low.webp" alt=""><div><h2>${esc(card.name)}</h2>
-    <div class="sub">${esc(num)} · ${esc(card.set.name)}${card.rarity ? ' · ' + esc(card.rarity) : ''}</div></div></div>
-    ${verdict(qty, best, !prices.length)}
-    ${priceTable(prices)}
-    ${rows.length ? `<p class="note">You have: ${esc(rows.map(r => `${r.h}${r.q > 1 ? ' ×' + r.q : ''} (${gbp(r.v)})`).join(', '))}</p>` : ''}
-    ${!rows.length ? addBtn(k) : ''}`);
-  log({ key: k, name: card.name, code: num, isNew: !qty, best });
-}
 function renderPokeOffline(n, guess) {
   const rows = guess.length ? guess : [];
   show(`<h2>${esc(n.local)}${n.total ? '/' + esc(n.total) : ''}</h2>
     <div class="tags">${rows.length ? '<span class="tag t-own">Probably in collection</span>' : '<span class="tag t-warn">Card not found online</span>'}</div>
-    ${rows.length ? `<p class="note">You own ${esc(rows.map(r => `${r.n} (${r.s}, ${r.h})`).join(', '))}.</p>` : '<p class="note">Try typing the name and number, e.g. “Pikachu 58/102”.</p>'}`);
+    ${rows.length ? `<p class="note">You own ${esc(rows.map(r => `${r.n} (${r.s}, ${r.h})`).join(', '))}.</p>` : '<p class="note">Try typing the name and number, e.g. “Pikachu 58/102”.</p>'}`, true);
 }
 function renderChoice(cands, n) {
   window._cands = cands; window._n = n;
   show(`<h2>Which card is it?</h2><p class="note">Several sets use ${esc(n.local)}/${esc(n.total || '')}.</p>
-    <div class="choices">${cands.map((c, i) => `<button data-pick="${i}">${esc(c.name)} – ${esc(c.set.name)}</button>`).join('')}</div>`);
+    <div class="choices">${cands.map((c, i) => `<button data-pick="${i}">${esc(c.name)} – ${esc(c.set.name)}</button>`).join('')}</div>`, true);
 }
-const addBtn = k => `<div class="row"><button data-add="${esc(k)}">I've added this to my app</button></div>`;
-function show(html) { const r = $('#result'); r.classList.remove('on'); void r.offsetWidth; r.innerHTML = html; r.classList.add('on'); r.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-function showError(msg) { show(`<p class="err" style="margin:0">${esc(msg)}</p>`); }
+const addBtn = (k, sel) => `<div class="row"><button data-add="${esc(k + '|' + (sel || 'any'))}">I've added ${sel ? 'this ' + esc(sel) : 'this'} to my app</button></div>`;
+function show(html, scroll) { const r = $('#result'); r.classList.remove('on'); void r.offsetWidth; r.innerHTML = html; r.classList.add('on');
+  if (scroll && !auto) r.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+function showError(msg) { show(`<p class="err" style="margin:0">${esc(msg)}</p>`, true); }
 
 function log(e) {
   state.hist = [e, ...state.hist.filter(h => h.key !== e.key)].slice(0, 200); drawHist();
@@ -536,19 +642,66 @@ function drawHist() {
   $('#histEmpty').hidden = list.length > 0;
 }
 
+/* ---------- auto-scan ---------- */
+let auto = false, lastSig = null, lastSigAt = 0, frameNo = 0;
+const failed = {};
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let lastBanner = 0;
+const autoStat = t => { if (Date.now() - lastBanner > 5000) $('#autoStat').textContent = t; };
+async function autoLoop() {
+  while (auto) {
+    const v = $('#video');
+    if (!stream || !v.videoWidth || document.hidden || manualBusy) { await sleep(500); continue; }
+    try {
+      const c = grabVideo(), odd = frameNo++ % 2;
+      const text = await ocr(odd ? prep(c, .5, 1, 2) : prep(c));      // alternate: whole card / enlarged lower half
+      if (!auto) break;
+      const found = detect(text), sigs = [...found.ygo, ...found.poke.map(p => p.key)];
+      if (!sigs.length) { autoStat('Auto-scan: looking for a card…'); if (Date.now() - lastSigAt > 4000) lastSig = null; }
+      else if (sigs.includes(lastSig)) { lastSigAt = Date.now(); autoStat('Auto-scan: same card – show the next one'); }
+      else if (sigs.every(s => failed[s] > Date.now() - 30000)) autoStat('Auto-scan: hold steady…');
+      else {
+        autoStat('Auto-scan: checking ' + sigs[0] + '…');
+        const res = await resolve(found, text, true);
+        if (res) { lastSig = sigs[0]; lastSigAt = Date.now(); }
+        else sigs.forEach(s => failed[s] = Date.now());
+      }
+    } catch (e) { console.warn(e); }
+    await sleep(250);
+  }
+}
+async function setAuto(on) {
+  auto = on; $('#autoBtn').setAttribute('aria-pressed', on); $('#autoBtn').textContent = on ? 'Auto-scan on' : 'Auto-scan off';
+  $('#autoStat').classList.toggle('on', on); $('#shoot').hidden = on;
+  if (on) { audio(); if (!stream) await startCam(); if (!stream) return setAuto(false);
+    if (!$('#still').hidden) { $('#still').hidden = true; $('#cam').classList.remove('still'); }
+    autoStat(worker ? 'Auto-scan: looking for a card…' : 'Auto-scan: preparing text reader…'); autoLoop(); }
+}
+let manualBusy = false;
+
 /* ---------- events ---------- */
-document.querySelectorAll('.seg button').forEach(b => b.onclick = () => {
-  state.game = b.dataset.g; document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-pressed', x === b));
+document.querySelectorAll('[data-g]').forEach(b => b.onclick = () => {
+  state.game = b.dataset.g; document.querySelectorAll('[data-g]').forEach(x => x.setAttribute('aria-pressed', x === b));
+  $('#varSeg').hidden = state.game === 'ygo';
 });
+document.querySelectorAll('[data-v]').forEach(b => b.onclick = () => {
+  state.variant = b.dataset.v; db.set('variant', state.variant); paintVar();
+});
+const paintVar = () => document.querySelectorAll('[data-v]').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === state.variant));
+$('#autoBtn').onclick = () => setAuto(!auto);
+$('#soundBtn').onclick = () => { state.sound = !state.sound; db.set('sound', state.sound); audio(); paintSound(); if (state.sound) dingNew(); };
+const paintSound = () => { $('#soundBtn').setAttribute('aria-pressed', state.sound); $('#soundBtn').textContent = state.sound ? 'Sound on' : 'Sound off'; };
 $('#shoot').onclick = async () => {
+  audio();
   if (!stream) return startCam();
   if (!$('#still').hidden) { $('#still').hidden = true; $('#cam').classList.remove('still'); }
   const v = $('#video'); if (!v.videoWidth) return;
   scanCanvas(grabVideo());
 };
-$('#photoBtn').onclick = e => { e.preventDefault(); $('#photo').click(); };
+$('#photoBtn').onclick = e => { e.preventDefault(); audio(); $('#photo').click(); };
 $('#photo').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
+  if (auto) setAuto(false);
   const img = $('#still'); img.src = URL.createObjectURL(f); await img.decode(); img.hidden = false; $('#camOff').hidden = true; $('#cam').classList.add('still');
   const bmp = document.createElement('canvas'), s = Math.min(1, 2200 / Math.max(img.naturalWidth, img.naturalHeight));
   bmp.width = img.naturalWidth * s; bmp.height = img.naturalHeight * s; bmp.getContext('2d').drawImage(img, 0, 0, bmp.width, bmp.height);
@@ -557,23 +710,25 @@ $('#photo').onchange = async e => {
   finally { $('#busy').classList.remove('on'); e.target.value = ''; }
 };
 $('#manual').onsubmit = async e => {
-  e.preventDefault(); const t = $('#manualIn').value.trim(); if (!t) return;
-  $('#busy').classList.add('on');
+  e.preventDefault(); audio(); const t = $('#manualIn').value.trim(); if (!t) return;
+  $('#busy').classList.add('on'); manualBusy = true;
   try { const found = detect(t);
     if (!found.ygo.length && !found.poke.length && state.game !== 'ygo') {   // name only -> search
       const briefs = await getJSON('https://api.tcgdex.net/v2/en/cards?name=' + encodeURIComponent(t)).catch(() => []);
       const full = (await Promise.all(briefs.slice(0, 12).map(b => getJSON('https://api.tcgdex.net/v2/en/cards/' + b.id).catch(() => null)))).filter(Boolean);
-      if (full.length === 1) await renderPoke(full[0]); else if (full.length) renderChoice(full, { local: '', total: '' }); else showError('No card found for “' + t + '”.');
+      if (full.length === 1) await showPoke(full[0]); else if (full.length) renderChoice(full, { local: '', total: '' }); else showError('No card found for “' + t + '”.');
     } else await resolve(found, t);
-  } finally { $('#busy').classList.remove('on'); }
+  } finally { $('#busy').classList.remove('on'); manualBusy = false; }
 };
 $('#result').onclick = async e => {
-  const p = e.target.closest('[data-pick]'), a = e.target.closest('[data-add]');
-  if (p) { const c = window._cands[+p.dataset.pick]; renderPoke(c, window._n && window._n.local ? window._n : null); }
-  if (a) { state.added[a.dataset.add] = Date.now(); db.set('added', state.added); a.outerHTML = '<p class="note ok">Marked as added – it won\'t be flagged as new again.</p>';
-           const h = state.hist.find(h => h.key === a.dataset.add); if (h) { h.isNew = false; drawHist(); } showStatus(); }
+  const p = e.target.closest('[data-pick]'), a = e.target.closest('[data-add]'), s = e.target.closest('[data-sel]');
+  if (p) { const c = window._cands[+p.dataset.pick]; await showPoke(c, window._n && window._n.local ? window._n : null); }
+  if (s && cur) { cur.sel = cur.sel === s.dataset.sel ? null : s.dataset.sel; renderCur(false); }
+  if (a) { state.added[a.dataset.add] = Date.now(); db.set('added', state.added);
+           if (cur) renderCur(false); else a.outerHTML = '<p class="note ok">Marked as added.</p>'; showStatus(); }
 };
 $('#onlyFlag').onchange = drawHist;
+
 
 $('#openSet').onclick = () => $('#settings').showModal();
 $('#closeSet').onclick = () => $('#settings').close();
@@ -598,9 +753,10 @@ $('#clearAdded').onclick = () => { state.added = {}; db.set('added', {}); showSt
 $('#clearAll').onclick = async () => { for (const k of ['poke', 'ygo', 'added']) await db.del(k); state.poke = state.ygo = null; state.added = {}; showStatus(); };
 
 (async () => {
-  const [poke, ygo, added, thr, fxv, sets] = await Promise.all(['poke', 'ygo', 'added', 'thr', 'fx', 'sets'].map(db.get));
-  Object.assign(state, { poke, ygo, added: added || {}, thr: thr ?? 1, fx: fxv, sets });
-  $('#thr').value = state.thr; showStatus(); drawHist();
+  const [poke, ygo, added, thr, fxv, sets, variant, sound] = await Promise.all(['poke', 'ygo', 'added', 'thr', 'fx', 'sets', 'variant', 'sound'].map(db.get));
+  Object.assign(state, { poke, ygo, added: added || {}, thr: thr ?? 1, fx: fxv, sets, variant: variant || 'any', sound: sound ?? true });
+  $('#thr').value = state.thr; showStatus(); drawHist(); paintVar(); paintSound();
+  if (ygo && ygo.v !== 2) $('#collStatus').textContent += ' · Re-load your Dragon Shield file to enable rarity matching.';
   if (!poke && !ygo) $('#settings').showModal();
 })();
 }
