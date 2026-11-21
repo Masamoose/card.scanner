@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#17131d">
+<title>Card Scanner</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE: quick, confident, binder-side tool
+   IDEA: a card sleeve under a jeweller's loupe – scan, then a verdict tag
+   PICTURE: live camera with a card-shaped guide is the hero
+   COLOUR+TYPE: plum-black ground, coral "NEW" tag, gold "£" tag; Rubik + Inter
+   LAYOUT: camera on top, verdict card under it, history list, settings sheet */
+:root{--bg:#17131d;--panel:#231d2b;--line:#3a3145;--ink:#f4eff8;--mute:#b4a9c0;--new:#ff5a4e;--gold:#ffc53d;--own:#7fd1c7}
+*{box-sizing:border-box;min-width:0}
+[hidden]{display:none!important}
+.cam.still .guide{display:none}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Inter,system-ui,sans-serif;overflow-x:clip}
+body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+h1,h2,h3{font-family:Rubik,Inter,sans-serif;margin:0;line-height:1.1}
+button,input,select{font:inherit;color:inherit}
+button{min-height:44px;border-radius:12px;border:1px solid var(--line);background:var(--panel);padding:0 16px;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.wrap{max-width:640px;margin:0 auto;padding:12px 14px 40px}
+header{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+header h1{font-size:24px;flex:1}
+.pill{font-size:13px;color:var(--mute)}
+.seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:3px;gap:3px;margin-bottom:10px}
+.seg button{flex:1;border:0;background:none;min-height:38px;font-size:15px}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--bg);font-weight:600}
+.cam{position:relative;aspect-ratio:3/4;max-height:58vh;width:100%;border-radius:18px;overflow:hidden;background:#000;border:1px solid var(--line)}
+.cam video,.cam img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.guide{position:absolute;left:12%;right:12%;top:8%;bottom:8%;border:2px dashed rgba(255,255,255,.55);border-radius:14px;box-shadow:0 0 0 999px rgba(0,0,0,.28);pointer-events:none}
+.guide span{position:absolute;bottom:-1px;left:50%;transform:translate(-50%,100%);font-size:13px;color:#fff;white-space:nowrap;padding-top:6px}
+.camoff{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px;color:var(--mute)}
+.busy{position:absolute;inset:0;display:none;place-items:center;background:rgba(23,19,29,.7);font-weight:600}
+.busy.on{display:grid}
+.row{display:flex;gap:8px;margin-top:10px}
+.row>*{flex:1}
+.shoot{background:var(--ink);color:var(--bg);font-weight:700;font-size:18px;min-height:56px;border:0}
+.manual{display:flex;gap:8px;margin-top:10px}
+.manual input{flex:1;min-height:44px;border-radius:12px;border:1px solid var(--line);background:var(--panel);padding:0 12px;font-size:16px}
+.result{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:14px;display:none}
+.result.on{display:block}
+.res-top{display:flex;gap:14px}
+.res-top img{width:96px;border-radius:6px;flex:none;align-self:flex-start;background:#000}
+.res-top h2{font-size:22px;margin-bottom:4px}
+.sub{color:var(--mute);font-size:14px}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.tag{font-family:Rubik,sans-serif;font-weight:700;font-size:14px;padding:5px 10px;border-radius:8px;white-space:nowrap}
+.t-new{background:var(--new);color:#1a0806}
+.t-gold{background:var(--gold);color:#241a00}
+.t-own{background:transparent;color:var(--own);border:1px solid var(--own)}
+.t-warn{background:transparent;color:var(--mute);border:1px dashed var(--mute)}
+.prices{width:100%;border-collapse:collapse;font-size:14px;margin-top:4px}
+.prices td{padding:5px 0;border-top:1px solid var(--line)}
+.prices td:last-child{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.note{font-size:13px;color:var(--mute);margin-top:8px}
+.choices{display:grid;gap:6px;margin-top:8px}
+.choices button{text-align:left}
+h3{font-size:17px;margin:22px 0 8px;display:flex;justify-content:space-between;align-items:center}
+h3 label{font:14px Inter,sans-serif;color:var(--mute);display:flex;gap:6px;align-items:center}
+.hist{list-style:none;margin:0;padding:0}
+.hist li{display:flex;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:15px}
+.hist .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist .tag{font-size:12px;padding:3px 7px}
+.empty{color:var(--mute);font-size:14px}
+dialog{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:18px;width:min(560px,94vw);padding:18px}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+.field{margin:14px 0}
+.field b{display:block;margin-bottom:4px}
+.field input[type=number]{width:110px;min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--bg);padding:0 10px;font-size:16px}
+.file{display:block;margin-top:6px}
+.ok{color:var(--own)}.err{color:var(--new)}
+@media(prefers-reduced-motion:no-preference){.result.on{animation:pop .25s ease-out}@keyframes pop{from{transform:translateY(8px);opacity:0}}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Card Scanner</h1>
+    <button id="openSet" aria-label="Collections and settings">Collections</button>
+  </header>
+  <p class="pill" id="collStatus">No collections loaded yet. Tap Collections to load your exports.</p>
+
+  <div class="seg" role="group" aria-label="Card game">
+    <button data-g="auto" aria-pressed="true">Auto</button>
+    <button data-g="poke" aria-pressed="false">Pokémon</button>
+    <button data-g="ygo" aria-pressed="false">Yu-Gi-Oh!</button>
+  </div>
+
+  <div class="cam" id="cam">
+    <video id="video" playsinline muted></video>
+    <img id="still" alt="" hidden>
+    <div class="camoff" id="camOff">Tap <b>&nbsp;Start camera&nbsp;</b> or use <b>&nbsp;Photo&nbsp;</b>.</div>
+    <div class="guide"><span>Fill the box with the card, keep it flat and well lit</span></div>
+    <div class="busy" id="busy">Reading card…</div>
+  </div>
+  <div class="row">
+    <button class="shoot" id="shoot">Start camera</button>
+  </div>
+  <div class="row">
+    <label class="file" style="flex:1"><button id="photoBtn" style="width:100%">Photo / gallery</button>
+      <input id="photo" type="file" accept="image/*" capture="environment" hidden></label>
+  </div>
+  <form class="manual" id="manual">
+    <input id="manualIn" placeholder="Or type: LOB-EN001, 4/102, Charizard 4/102" autocomplete="off" autocapitalize="off">
+    <button>Look up</button>
+  </form>
+
+  <section class="result" id="result" aria-live="polite"></section>
+
+  <h3>This session <label><input type="checkbox" id="onlyFlag"> flagged only</label></h3>
+  <ul class="hist" id="hist"></ul>
+  <p class="empty" id="histEmpty">Scanned cards will appear here.</p>
+</div>
+
+<dialog id="settings">
+  <h2>Collections</h2>
+  <p class="note">Your files stay on this phone. Nothing is uploaded anywhere.</p>
+  <div class="field"><b>Pokémon – Poke Card Values export (.xlsx)</b>
+    <input class="file" type="file" id="fPoke" accept=".xlsx,.xls,.csv"><span id="sPoke" class="note"></span></div>
+  <div class="field"><b>Yu-Gi-Oh! – Dragon Shield export (.csv)</b>
+    <input class="file" type="file" id="fYgo" accept=".csv,text/csv"><span id="sYgo" class="note"></span></div>
+  <div class="field"><b>Flag cards worth at least</b>
+    £ <input type="number" id="thr" min="0" step="0.5" value="1"></div>
+  <div class="field"><b>Cards marked “added” since your last import</b>
+    <span id="addedCount" class="note"></span>
+    <div class="row"><button id="clearAdded">Clear added list</button><button id="clearAll">Remove all data</button></div></div>
+  <div class="row"><button id="closeSet" class="shoot" style="min-height:48px;font-size:16px">Done</button></div>
+</dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>/* ---- core: parsing + matching (no DOM) ---- */
+const Core = (() => {
+  const normName = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+  // Yu-Gi-Oh set codes: "LOB-EN001", "SBC1-ENC09", "RA02-EN001alt" -> base code
+  const normCode = c => String(c || '').trim().toUpperCase().replace(/(\d)(ALT|[AB])$/, '$1');
+
+  // Pokémon numbers: "089/103" -> "89/103", "RC05/RC32" -> "RC5/RC32", "MEP080" -> "MEP80"
+  const normNum = n => String(n || '').toUpperCase().replace(/\s+/g, '')
+    .replace(/(^|\/|[A-Z])0+(\d)/g, '$1$2');
+
+  function parseCsv(text) {
+    const rows = []; let row = [], f = '', q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) {
+        if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; }
+        else f += c;
+      } else if (c === '"') q = true;
+      else if (c === ',') { row.push(f); f = ''; }
+      else if (c === '\n') { row.push(f.replace(/\r$/, '')); rows.push(row); row = []; f = ''; }
+      else f += c;
+    }
+    if (f || row.length) { row.push(f.replace(/\r$/, '')); rows.push(row); }
+    return rows;
+  }
+
+  // Dragon Shield "all-folders.csv"
+  function parseYgo(text) {
+    const rows = parseCsv(text.replace(/^﻿/, ''));
+    const h = rows.findIndex(r => r.includes('Card Number') && r.includes('Card Name'));
+    if (h < 0) throw new Error("This doesn't look like a Dragon Shield export (no 'Card Number' column).");
+    const H = rows[h], col = k => H.indexOf(k);
+    const iN = col('Card Name'), iC = col('Card Number'), iQ = col('Quantity'), iF = col('Folder Name'),
+      iP = col('Printing'), iR = col('Rarity'), iM = col('MARKET'), iS = col('Set Name');
+    const codes = {}, names = {}; let total = 0;
+    for (const r of rows.slice(h + 1)) {
+      if (!r[iC] || !r[iN]) continue;
+      const code = normCode(r[iC]), q = +r[iQ] || 1; total += q;
+      const e = codes[code] || (codes[code] = { n: r[iN], s: r[iS] || '', q: 0, f: [], p: [], r: r[iR] || '', m: 0 });
+      e.q += q;
+      if (r[iF] && !e.f.includes(r[iF])) e.f.push(r[iF]);
+      if (r[iP] && !e.p.includes(r[iP])) e.p.push(r[iP]);
+      e.m = Math.max(e.m, parseFloat(r[iM]) || 0);
+      const k = normName(r[iN]); names[k] = (names[k] || 0) + q;
+    }
+    return { codes, names, total, unique: Object.keys(codes).length, at: Date.now() };
+  }
+
+  // Poke Card Values xlsx -> rows (array of arrays from SheetJS)
+  function parsePoke(rows) {
+    const h = rows.findIndex(r => r && r.map(String).includes('#') && r.map(String).includes('Name'));
+    if (h < 0) throw new Error("This doesn't look like a Poke Card Values export (no '#' and 'Name' columns).");
+    const H = rows[h].map(String), col = k => H.indexOf(k);
+    const iNum = col('#'), iN = col('Name'), iS = col('Set'), iH = col('Holo'), iV = col('Value'), iQ = col('Qty'), iR = col('Rarity');
+    const byNum = {}; let total = 0, count = 0;
+    for (const r of rows.slice(h + 1)) {
+      if (!r || r[iN] == null || r[iNum] == null) continue;
+      const k = normNum(r[iNum]), q = +r[iQ] || 1; total += q; count++;
+      (byNum[k] || (byNum[k] = [])).push({ n: String(r[iN]), s: String(r[iS] || ''), h: String(r[iH] || ''),
+        v: +r[iV] || 0, q, r: String(r[iR] || ''), num: String(r[iNum]) });
+    }
+    return { byNum, total, unique: count, at: Date.now() };
+  }
+
+  // ---- OCR text -> candidates ----
+  const LOOK = { O: '0', Q: '0', D: '0', I: '1', L: '1', S: '5', Z: '2', B: '8', G: '6', T: '7' };
+  function ygoCodes(text) {
+    const t = String(text).toUpperCase().replace(/[–—~_]/g, '-');
+    const out = [];
+    const re = /([A-Z0-9]{2,5})\s?-\s?([A-Z0-9]{3,6})(?![A-Z0-9])/g; let m;
+    while ((m = re.exec(t))) {
+      const pre = m[1], suf = m[2];
+      const raw = pre + '-' + suf;
+      // fix look-alike letters in the trailing number part
+      const fixDigits = s => s.replace(/[A-Z0-9]{2,3}$/, x => x.replace(/[OQDILSZBGT]/g, c => LOOK[c]));
+      const fixed = pre + '-' + (suf.length >= 5 ? suf.slice(0, suf.length - 3) + fixDigits(suf.slice(-3)) : fixDigits(suf));
+      const fixed2 = pre + '-' + suf.slice(0, -2) + suf.slice(-2).replace(/[OQDILSZBGT]/g, c => LOOK[c]);
+      for (const c of [raw, fixed2, fixed]) {
+        if (/^[A-Z0-9]{2,5}-(?:[A-Z]{1,2}[A-Z]?)?\d{2,3}$/.test(c) && /\d/.test(c.split('-')[1]) && !out.includes(c)) out.push(c);
+      }
+    }
+    return out;
+  }
+
+  function pokeNums(text) {
+    const t = String(text).replace(/[|\\]/g, '/').replace(/[Oo](?=\d)|(?<=\d)[Oo]/g, '0');
+    const out = []; let m;
+    const re = /(?<![A-Za-z0-9])([A-Z]{0,3}\d{1,3}[a-z]?)\s?\/\s?([A-Z]{0,3}\d{2,3}|SM-P)(?![0-9])/g;
+    while ((m = re.exec(t))) {
+      const local = m[1], tot = m[2];
+      if (/^\d+$/.test(local) && /^\d+$/.test(tot) && +local > +tot + 150) continue; // nonsense
+      const k = normNum(local + '/' + tot);
+      if (!out.some(o => o.key === k)) out.push({ key: k, local, total: tot });
+    }
+    const re2 = /\b(SWSH|SVP|SV|SM|XY|BW|MEP)\s?0*(\d{1,3})\b/g;
+    while ((m = re2.exec(t.toUpperCase()))) {
+      const k = normNum(m[1] + m[2]);
+      if (!out.some(o => o.key === k)) out.push({ key: k, local: m[1] + m[2], total: null, promo: m[1] });
+    }
+    return out;
+  }
+
+  // Which of the owned Pokémon rows match this number (+ optional name)?
+  function pokeOwned(coll, numKey, name) {
+    const rows = (coll && coll.byNum[numKey]) || [];
+    if (!name) return rows;
+    const n = normName(name), exact = rows.filter(r => normName(r.n) === n);
+    if (exact.length) return exact;
+    const first = n.split(' ')[0];
+    return rows.filter(r => normName(r.n).split(' ')[0] === first);
+  }
+  // name guess from OCR text, using owned rows with that number
+  function pokeNameFromText(coll, numKey, text) {
+    const t = ' ' + normName(text) + ' ';
+    const rows = (coll && coll.byNum[numKey]) || [];
+    return rows.filter(r => t.includes(' ' + normName(r.n).split(' ')[0] + ' '));
+  }
+
+  // digit look-alikes OCR commonly swaps, for re-trying a Pokémon number
+  const SWAP = { '0': '86', '1': '74', '7': '1', '8': '036', '6': '58', '5': '6', '3': '8', '4': '1' };
+  function digitVariants(local) {
+    const out = [];
+    for (let i = 0; i < local.length; i++) for (const d of (SWAP[local[i]] || ''))
+      out.push(local.slice(0, i) + d + local.slice(i + 1));
+    return out;
+  }
+  const nameInText = (name, text) => (' ' + normName(text) + ' ').includes(' ' + normName(name).split(' ')[0] + ' ');
+
+  return { digitVariants, nameInText, normName, normCode, normNum, parseCsv, parseYgo, parsePoke, ygoCodes, pokeNums, pokeOwned, pokeNameFromText };
+})();
+if (typeof module !== 'undefined') module.exports = Core;
+</script>
+<script>
+{
+const $ = s => document.querySelector(s);
+const FALLBACK = { USD: 0.76, EUR: 0.84 };
+let state = { game: 'auto', thr: 1, poke: null, ygo: null, added: {}, fx: null, sets: null, hist: [] };
+
+/* ---------- storage (IndexedDB, with graceful failure) ---------- */
+const db = (() => {
+  let p;
+  const open = () => p || (p = new Promise((res, rej) => {
+    const r = indexedDB.open('cardscanner', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }));
+  const tx = async (mode, fn) => { const d = await open(); return new Promise((res, rej) => {
+    const t = d.transaction('kv', mode), s = t.objectStore('kv'), q = fn(s);
+    t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error); }); };
+  return { get: k => tx('readonly', s => s.get(k)).catch(() => null),
+           set: (k, v) => tx('readwrite', s => s.put(v, k)).catch(e => console.warn(e)),
+           del: k => tx('readwrite', s => s.delete(k)).catch(() => {}) };
+})();
+
+const gbp = v => v == null || isNaN(v) ? '–' : '£' + v.toFixed(2);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+async function getJSON(url) { const r = await fetch(url); if (!r.ok) throw new Error(r.status); return r.json(); }
+
+async function fx() {
+  if (state.fx && Date.now() - state.fx.at < 864e5) return state.fx;
+  try {
+    const [u, e] = await Promise.all([getJSON('https://api.frankfurter.dev/v1/latest?from=USD&to=GBP'),
+                                      getJSON('https://api.frankfurter.dev/v1/latest?from=EUR&to=GBP')]);
+    state.fx = { USD: u.rates.GBP, EUR: e.rates.GBP, at: Date.now() }; db.set('fx', state.fx);
+  } catch { state.fx = state.fx || { ...FALLBACK, at: 0 }; }
+  return state.fx;
+}
+
+/* ---------- collection status ---------- */
+function showStatus() {
+  const p = state.poke, y = state.ygo, bits = [];
+  if (p) bits.push(`Pokémon: ${p.unique.toLocaleString()} cards`);
+  if (y) bits.push(`Yu-Gi-Oh!: ${y.unique.toLocaleString()} printings`);
+  $('#collStatus').textContent = bits.length ? bits.join(' · ') + ` · flag ≥ £${state.thr}` :
+    'No collections loaded yet. Tap Collections to load your exports.';
+  $('#sPoke').textContent = p ? `Loaded ${p.unique.toLocaleString()} rows (${new Date(p.at).toLocaleDateString('en-GB')})` : '';
+  $('#sYgo').textContent = y ? `Loaded ${y.unique.toLocaleString()} printings (${new Date(y.at).toLocaleDateString('en-GB')})` : '';
+  $('#addedCount').textContent = `${Object.keys(state.added).length} card(s).`;
+}
+
+/* ---------- camera ---------- */
+let stream = null;
+async function startCam() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false });
+    const v = $('#video'); v.srcObject = stream; await v.play();
+    $('#camOff').hidden = true; $('#still').hidden = true; $('#cam').classList.remove('still'); $('#shoot').textContent = 'Scan card';
+  } catch (e) {
+    $('#camOff').innerHTML = 'Camera unavailable here. Use <b>&nbsp;Photo / gallery&nbsp;</b> instead.';
+  }
+}
+function frameCanvas(src, w, h) {
+  // crop to the guide box, then greyscale + contrast
+  const cx = w * .12, cy = h * .08, cw = w * .76, ch = h * .84;
+  const scale = Math.min(1, 1600 / cw), c = document.createElement('canvas');
+  c.width = Math.round(cw * scale); c.height = Math.round(ch * scale);
+  const g = c.getContext('2d'); g.drawImage(src, cx, cy, cw, ch, 0, 0, c.width, c.height);
+  return c;
+}
+function prep(c, y0 = 0, y1 = 1, up = 1) {
+  up = Math.min(3, Math.max(up, 1600 / c.width));   // small text needs pixels
+  const o = document.createElement('canvas'), sy = c.height * y0, sh = c.height * (y1 - y0);
+  o.width = c.width * up; o.height = sh * up;
+  const g = o.getContext('2d'); g.filter = 'grayscale(1) contrast(1.6)';
+  g.drawImage(c, 0, sy, c.width, sh, 0, 0, o.width, o.height); return o;
+}
+// the camera preview uses object-fit:cover, so map the guide box from the visible area
+function grabVideo() {
+  const v = $('#video'), box = $('#cam').getBoundingClientRect();
+  const vw = v.videoWidth, vh = v.videoHeight, s = Math.max(box.width / vw, box.height / vh);
+  const visW = box.width / s, visH = box.height / s, ox = (vw - visW) / 2, oy = (vh - visH) / 2;
+  const tmp = document.createElement('canvas'); tmp.width = visW; tmp.height = visH;
+  tmp.getContext('2d').drawImage(v, ox, oy, visW, visH, 0, 0, visW, visH);
+  return frameCanvas(tmp, visW, visH);
+}
+
+let worker = null;
+async function ocr(canvas) {
+  if (!worker) { $('#busy').textContent = 'Preparing text reader (first time only)…'; worker = await Tesseract.createWorker('eng'); }
+  $('#busy').textContent = 'Reading card…';
+  const { data } = await worker.recognize(canvas); return data.text || '';
+}
+
+async function scanCanvas(c) {
+  $('#busy').classList.add('on');
+  try {
+    let text = await ocr(prep(c));
+    let found = detect(text);
+    if (!found.ygo.length && !found.poke.length) {           // second try: lower part, enlarged
+      text += '\n' + await ocr(prep(c, .5, 1, 2)); found = detect(text);
+    }
+    await resolve(found, text);
+  } catch (e) { showError('Could not read that one. Try again with more light, or type the code below.'); console.error(e); }
+  finally { $('#busy').classList.remove('on'); }
+}
+
+function detect(text) {
+  return { ygo: state.game === 'poke' ? [] : Core.ygoCodes(text),
+           poke: state.game === 'ygo' ? [] : Core.pokeNums(text) };
+}
+
+/* ---------- lookups ---------- */
+async function ygoLookup(codes) {
+  const y = state.ygo;
+  const order = [...codes].sort((a, b) => (y && y.codes[b] ? 1 : 0) - (y && y.codes[a] ? 1 : 0));
+  // OCR sometimes drops the first letter (OB-EN001 for LOB-EN001): borrow a unique match from the collection
+  if (y) for (const c of codes) if (!y.codes[c]) {
+    const m = Object.keys(y.codes).filter(k => k.length > c.length && k.endsWith(c) && k[k.length - c.length - 1] !== '-');
+    if (m.length === 1 && !order.includes(m[0])) order.splice(1, 0, m[0]);
+  }
+  for (const code of order) {
+    let info = null;
+    try { const r = await getJSON('https://db.ygoprodeck.com/api/v7/cardsetsinfo.php?setcode=' + encodeURIComponent(code));
+          info = Array.isArray(r) ? r[0] : r; if (info.error) info = null; } catch {}
+    const owned = y && y.codes[code];
+    if (info || owned) return { code, info, owned };
+  }
+  return null;
+}
+async function ygoPrice(hit) {
+  const r = await fx(), out = [];
+  const sp = hit.info && parseFloat(hit.info.set_price);
+  if (sp > 0) out.push(['TCGplayer, this printing', sp * r.USD]);
+  if (!sp && hit.info) {
+    try { const d = await getJSON('https://db.ygoprodeck.com/api/v7/cardinfo.php?id=' + hit.info.id);
+          const cp = d.data[0].card_prices[0];
+          if (+cp.cardmarket_price) out.push(['Cardmarket, cheapest printing', cp.cardmarket_price * r.EUR]);
+          if (+cp.tcgplayer_price) out.push(['TCGplayer, cheapest printing', cp.tcgplayer_price * r.USD]); } catch {}
+  }
+  return out;
+}
+
+async function pokeSets() {
+  if (state.sets && Date.now() - state.sets.at < 6048e5) return state.sets.list;
+  const list = (await getJSON('https://api.tcgdex.net/v2/en/sets')).map(s => ({ id: s.id, name: s.name, off: s.cardCount && s.cardCount.official }));
+  state.sets = { list, at: Date.now() }; db.set('sets', state.sets); return list;
+}
+async function pokeCandidates(n) {
+  let briefs = [];
+  if (n.total && /^\d+$/.test(n.total)) {
+    const sets = (await pokeSets()).filter(s => String(s.off) === String(+n.total)).slice(0, 8);
+    const got = await Promise.all(sets.map(s => getJSON(`https://api.tcgdex.net/v2/en/sets/${s.id}/${encodeURIComponent(n.local.replace(/^0+(?=\d)/, ''))}`).catch(() => null)));
+    return got.filter(Boolean);
+  }
+  try { briefs = await getJSON('https://api.tcgdex.net/v2/en/cards?localId=' + encodeURIComponent(n.local)); } catch {}
+  if (!briefs.length && n.promo) try { briefs = await getJSON('https://api.tcgdex.net/v2/en/cards?localId=' + encodeURIComponent(n.local.replace(/^[A-Z]+/, ''))); } catch {}
+  briefs = briefs.filter(b => Core.normNum(b.localId) === Core.normNum(n.local) || (n.promo && /p$|promo/i.test(b.id.split('-')[0])));
+  return (await Promise.all(briefs.slice(0, 8).map(b => getJSON('https://api.tcgdex.net/v2/en/cards/' + b.id).catch(() => null)))).filter(Boolean);
+}
+async function pokePrice(card) {
+  const r = await fx(), pr = card.pricing || {}, out = [], cm = pr.cardmarket, tp = pr.tcgplayer;
+  if (cm) {
+    if (cm.trend) out.push(['Cardmarket trend, normal', cm.trend * r.EUR]);
+    if (cm['trend-holo']) out.push(['Cardmarket trend, holo/reverse', cm['trend-holo'] * r.EUR]);
+  }
+  if (tp) for (const [k, v] of Object.entries(tp)) if (v && v.marketPrice)
+    out.push(['TCGplayer, ' + k.replace(/-/g, ' '), v.marketPrice * r.USD]);
+  return out;
+}
+
+/* ---------- resolve + render ---------- */
+async function resolve(found, text) {
+  const tries = [];
+  if (found.ygo.length) tries.push('ygo');
+  if (found.poke.length) tries.push('poke');
+  for (const g of tries) {
+    if (g === 'ygo') { const hit = await ygoLookup(found.ygo); if (hit) return renderYgo(hit, await ygoPrice(hit)); }
+    else {
+      for (let n of found.poke) {
+        let cands = await pokeCandidates(n).catch(() => []);
+        let byName = cands.filter(c => Core.nameInText(c.name, text));
+        if (!byName.length && n.total && /^\d+$/.test(n.local)) {   // likely a misread digit: try look-alikes
+          for (const v of Core.digitVariants(n.local)) {
+            const alt = await pokeCandidates({ ...n, local: v }).catch(() => []);
+            const hit = alt.filter(c => Core.nameInText(c.name, text));
+            if (hit.length) { byName = hit; n = { ...n, local: v, key: Core.normNum(v + '/' + n.total) }; break; }
+          }
+        }
+        if (byName.length) cands = byName;
+        if (cands.length === 1) return renderPoke(cands[0], n);
+        if (cands.length > 1) return renderChoice(cands, n);
+        const guess = Core.pokeNameFromText(state.poke, n.key, text);
+        return renderPokeOffline(n, guess);
+      }
+    }
+  }
+  showError(found.ygo.length || found.poke.length
+    ? `Read “${[...found.ygo, ...found.poke.map(p => p.local + (p.total ? '/' + p.total : ''))].slice(0, 3).join(', ')}” but couldn't find that card. Check it and type it below.`
+    : "Couldn't spot a set code or card number. Get closer to the bottom of the card, or type it below.");
+}
+
+function verdict(isOwned, best, unknownPrice) {
+  const t = [];
+  t.push(isOwned ? `<span class="tag t-own">In collection${isOwned > 1 ? ' ×' + isOwned : ''}</span>` : '<span class="tag t-new">NEW – not in collection</span>');
+  if (best >= state.thr) t.push(`<span class="tag t-gold">Worth ${gbp(best)} – over £${state.thr}</span>`);
+  else if (unknownPrice) t.push('<span class="tag t-warn">No price found</span>');
+  return `<div class="tags">${t.join('')}</div>`;
+}
+const priceTable = rows => rows.length ? `<table class="prices">${rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${gbp(v)}</td></tr>`).join('')}</table>` : '';
+
+function renderYgo(hit, prices) {
+  const key = 'Y:' + hit.code, own = hit.owned, added = state.added[key];
+  const name = hit.info ? hit.info.name : own.n, best = Math.max(0, ...prices.map(p => p[1]));
+  const ownedQty = own ? own.q : (added ? 1 : 0);
+  const otherPrint = !own && state.ygo && state.ygo.names[Core.normName(name)];
+  const img = hit.info ? `<img src="https://images.ygoprodeck.com/images/cards_small/${hit.info.id}.jpg" alt="">` : '';
+  show(`<div class="res-top">${img}<div><h2>${esc(name)}</h2>
+    <div class="sub">${esc(hit.code)} · ${esc(hit.info ? hit.info.set_name : own.s)}${hit.info && hit.info.set_rarity ? ' · ' + esc(hit.info.set_rarity) : ''}</div></div></div>
+    ${verdict(ownedQty, best, !prices.length)}
+    ${priceTable(prices)}
+    ${own ? `<p class="note">In: ${esc(own.f.slice(0, 3).join(', '))}${own.f.length > 3 ? '…' : ''} (${esc(own.p.join(', '))}). Dragon Shield value: ${own.m.toFixed(2)}</p>` : ''}
+    ${otherPrint ? `<p class="note">You have ${otherPrint} of this card from other sets, but not this printing.</p>` : ''}
+    ${!own ? addBtn(key) : ''}`);
+  log({ key, name, code: hit.code, isNew: !ownedQty, best });
+}
+
+function pokeOwnedRows(card, n) {
+  const key = n ? n.key : Core.normNum(card.localId + '/' + card.set.cardCount.official);
+  return { key, rows: Core.pokeOwned(state.poke, key, card.name) };
+}
+async function renderPoke(card, n) {
+  const prices = await pokePrice(card), best = Math.max(0, ...prices.map(p => p[1]));
+  const { key, rows } = pokeOwnedRows(card, n), k = 'P:' + key + ':' + Core.normName(card.name);
+  const qty = rows.reduce((a, r) => a + r.q, 0) || (state.added[k] ? 1 : 0);
+  const num = `${card.localId}/${card.set.cardCount.official}`;
+  show(`<div class="res-top"><img src="${esc(card.image)}/low.webp" alt=""><div><h2>${esc(card.name)}</h2>
+    <div class="sub">${esc(num)} · ${esc(card.set.name)}${card.rarity ? ' · ' + esc(card.rarity) : ''}</div></div></div>
+    ${verdict(qty, best, !prices.length)}
+    ${priceTable(prices)}
+    ${rows.length ? `<p class="note">You have: ${esc(rows.map(r => `${r.h}${r.q > 1 ? ' ×' + r.q : ''} (${gbp(r.v)})`).join(', '))}</p>` : ''}
+    ${!rows.length ? addBtn(k) : ''}`);
+  log({ key: k, name: card.name, code: num, isNew: !qty, best });
+}
+function renderPokeOffline(n, guess) {
+  const rows = guess.length ? guess : [];
+  show(`<h2>${esc(n.local)}${n.total ? '/' + esc(n.total) : ''}</h2>
+    <div class="tags">${rows.length ? '<span class="tag t-own">Probably in collection</span>' : '<span class="tag t-warn">Card not found online</span>'}</div>
+    ${rows.length ? `<p class="note">You own ${esc(rows.map(r => `${r.n} (${r.s}, ${r.h})`).join(', '))}.</p>` : '<p class="note">Try typing the name and number, e.g. “Pikachu 58/102”.</p>'}`);
+}
+function renderChoice(cands, n) {
+  window._cands = cands; window._n = n;
+  show(`<h2>Which card is it?</h2><p class="note">Several sets use ${esc(n.local)}/${esc(n.total || '')}.</p>
+    <div class="choices">${cands.map((c, i) => `<button data-pick="${i}">${esc(c.name)} – ${esc(c.set.name)}</button>`).join('')}</div>`);
+}
+const addBtn = k => `<div class="row"><button data-add="${esc(k)}">I've added this to my app</button></div>`;
+function show(html) { const r = $('#result'); r.classList.remove('on'); void r.offsetWidth; r.innerHTML = html; r.classList.add('on'); r.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+function showError(msg) { show(`<p class="err" style="margin:0">${esc(msg)}</p>`); }
+
+function log(e) {
+  state.hist = [e, ...state.hist.filter(h => h.key !== e.key)].slice(0, 200); drawHist();
+}
+function drawHist() {
+  const only = $('#onlyFlag').checked;
+  const list = state.hist.filter(h => !only || h.isNew || h.best >= state.thr);
+  $('#hist').innerHTML = list.map(h => `<li><span class="nm">${esc(h.name)} <span class="sub">${esc(h.code)}</span></span>
+    ${h.isNew ? '<span class="tag t-new">NEW</span>' : '<span class="tag t-own">owned</span>'}${h.best >= state.thr ? `<span class="tag t-gold">${gbp(h.best)}</span>` : ''}</li>`).join('');
+  $('#histEmpty').hidden = list.length > 0;
+}
+
+/* ---------- events ---------- */
+document.querySelectorAll('.seg button').forEach(b => b.onclick = () => {
+  state.game = b.dataset.g; document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-pressed', x === b));
+});
+$('#shoot').onclick = async () => {
+  if (!stream) return startCam();
+  if (!$('#still').hidden) { $('#still').hidden = true; $('#cam').classList.remove('still'); }
+  const v = $('#video'); if (!v.videoWidth) return;
+  scanCanvas(grabVideo());
+};
+$('#photoBtn').onclick = e => { e.preventDefault(); $('#photo').click(); };
+$('#photo').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const img = $('#still'); img.src = URL.createObjectURL(f); await img.decode(); img.hidden = false; $('#camOff').hidden = true; $('#cam').classList.add('still');
+  const bmp = document.createElement('canvas'), s = Math.min(1, 2200 / Math.max(img.naturalWidth, img.naturalHeight));
+  bmp.width = img.naturalWidth * s; bmp.height = img.naturalHeight * s; bmp.getContext('2d').drawImage(img, 0, 0, bmp.width, bmp.height);
+  $('#busy').classList.add('on');
+  try { const text = await ocr(prep(bmp)); const f2 = detect(text); if (f2.ygo.length || f2.poke.length) await resolve(f2, text); else await scanCanvas(bmp); }
+  finally { $('#busy').classList.remove('on'); e.target.value = ''; }
+};
+$('#manual').onsubmit = async e => {
+  e.preventDefault(); const t = $('#manualIn').value.trim(); if (!t) return;
+  $('#busy').classList.add('on');
+  try { const found = detect(t);
+    if (!found.ygo.length && !found.poke.length && state.game !== 'ygo') {   // name only -> search
+      const briefs = await getJSON('https://api.tcgdex.net/v2/en/cards?name=' + encodeURIComponent(t)).catch(() => []);
+      const full = (await Promise.all(briefs.slice(0, 12).map(b => getJSON('https://api.tcgdex.net/v2/en/cards/' + b.id).catch(() => null)))).filter(Boolean);
+      if (full.length === 1) await renderPoke(full[0]); else if (full.length) renderChoice(full, { local: '', total: '' }); else showError('No card found for “' + t + '”.');
+    } else await resolve(found, t);
+  } finally { $('#busy').classList.remove('on'); }
+};
+$('#result').onclick = async e => {
+  const p = e.target.closest('[data-pick]'), a = e.target.closest('[data-add]');
+  if (p) { const c = window._cands[+p.dataset.pick]; renderPoke(c, window._n && window._n.local ? window._n : null); }
+  if (a) { state.added[a.dataset.add] = Date.now(); db.set('added', state.added); a.outerHTML = '<p class="note ok">Marked as added – it won\'t be flagged as new again.</p>';
+           const h = state.hist.find(h => h.key === a.dataset.add); if (h) { h.isNew = false; drawHist(); } showStatus(); }
+};
+$('#onlyFlag').onchange = drawHist;
+
+$('#openSet').onclick = () => $('#settings').showModal();
+$('#closeSet').onclick = () => $('#settings').close();
+$('#thr').onchange = e => { state.thr = Math.max(0, +e.target.value || 0); db.set('thr', state.thr); showStatus(); drawHist(); };
+$('#fYgo').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return; $('#sYgo').textContent = 'Reading…';
+  try { state.ygo = Core.parseYgo(await f.text()); await db.set('ygo', state.ygo); clearAddedFor('Y:'); showStatus(); }
+  catch (err) { $('#sYgo').innerHTML = `<span class="err">${esc(err.message)}</span>`; }
+};
+let xlsxLoaded = null;
+const loadXlsx = () => xlsxLoaded || (xlsxLoaded = new Promise((res, rej) => {
+  const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'; s.onload = res; s.onerror = rej; document.head.append(s); }));
+$('#fPoke').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return; $('#sPoke').textContent = 'Reading…';
+  try { await loadXlsx(); const wb = XLSX.read(await f.arrayBuffer());
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+    state.poke = Core.parsePoke(rows); await db.set('poke', state.poke); clearAddedFor('P:'); showStatus(); }
+  catch (err) { $('#sPoke').innerHTML = `<span class="err">${esc(err.message)}</span>`; }
+};
+function clearAddedFor(prefix) { for (const k of Object.keys(state.added)) if (k.startsWith(prefix)) delete state.added[k]; db.set('added', state.added); }
+$('#clearAdded').onclick = () => { state.added = {}; db.set('added', {}); showStatus(); };
+$('#clearAll').onclick = async () => { for (const k of ['poke', 'ygo', 'added']) await db.del(k); state.poke = state.ygo = null; state.added = {}; showStatus(); };
+
+(async () => {
+  const [poke, ygo, added, thr, fxv, sets] = await Promise.all(['poke', 'ygo', 'added', 'thr', 'fx', 'sets'].map(db.get));
+  Object.assign(state, { poke, ygo, added: added || {}, thr: thr ?? 1, fx: fxv, sets });
+  $('#thr').value = state.thr; showStatus(); drawHist();
+  if (!poke && !ygo) $('#settings').showModal();
+})();
+}
+</script>
+</body>
+</html>
