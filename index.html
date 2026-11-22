@@ -10,11 +10,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
 <style>
-/* VOICE: quick, confident, binder-side tool
+/* VOICE: quick, confident, desk-side tool (PC + webcam)
    IDEA: a card sleeve under a jeweller's loupe – scan, then a verdict tag
    PICTURE: live camera with a card-shaped guide is the hero
    COLOUR+TYPE: plum-black ground, coral "NEW" tag, gold "£" tag; Rubik + Inter
-   LAYOUT: camera on top, verdict card under it, history list, settings sheet */
+   LAYOUT: webcam left, verdict + history right; stacks under 960px */
 :root{--bg:#17131d;--panel:#231d2b;--line:#3a3145;--ink:#f4eff8;--mute:#b4a9c0;--new:#ff5a4e;--gold:#ffc53d;--own:#7fd1c7}
 *{box-sizing:border-box;min-width:0}
 [hidden]{display:none!important}
@@ -25,8 +25,7 @@ h1,h2,h3{font-family:Rubik,Inter,sans-serif;margin:0;line-height:1.1}
 button,input,select{font:inherit;color:inherit}
 button{min-height:44px;border-radius:12px;border:1px solid var(--line);background:var(--panel);padding:0 16px;cursor:pointer}
 button:focus-visible,input:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
-.wrap{max-width:640px;margin:0 auto;padding:12px 14px 40px}
-header{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+header{display:flex;align-items:center;gap:10px;margin-bottom:4px}
 header h1{font-size:24px;flex:1}
 .pill{font-size:13px;color:var(--mute)}
 .seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:3px;gap:3px;margin-bottom:10px}
@@ -34,10 +33,6 @@ header h1{font-size:24px;flex:1}
 .autostat .tag{font-size:12px;padding:2px 7px;margin-left:6px}
 .seg button{flex:1;border:0;background:none;min-height:38px;font-size:15px}
 .seg button[aria-pressed=true]{background:var(--ink);color:var(--bg);font-weight:600}
-.cam{position:relative;aspect-ratio:3/4;max-height:58vh;width:100%;border-radius:18px;overflow:hidden;background:#000;border:1px solid var(--line)}
-.cam video,.cam img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.guide{position:absolute;left:12%;right:12%;top:8%;bottom:8%;border:2px dashed rgba(255,255,255,.55);border-radius:14px;box-shadow:0 0 0 999px rgba(0,0,0,.28);pointer-events:none}
-.guide span{position:absolute;bottom:-1px;left:50%;transform:translate(-50%,100%);font-size:13px;color:#fff;white-space:nowrap;padding-top:6px}
 .camoff{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:20px;color:var(--mute)}
 .busy{position:absolute;inset:0;display:none;place-items:center;background:rgba(23,19,29,.7);font-weight:600}
 .busy.on{display:grid}
@@ -57,10 +52,9 @@ header h1{font-size:24px;flex:1}
 .prices tr.sel td{font-weight:600}
 .manual{display:flex;gap:8px;margin-top:10px}
 .manual input{flex:1;min-height:44px;border-radius:12px;border:1px solid var(--line);background:var(--panel);padding:0 12px;font-size:16px}
-.result{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:14px;display:none}
+.result{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:14px;display:none}
 .result.on{display:block}
 .res-top{display:flex;gap:14px}
-.res-top img{width:96px;border-radius:6px;flex:none;align-self:flex-start;background:#000}
 .res-top h2{font-size:22px;margin-bottom:4px}
 .sub{color:var(--mute);font-size:14px}
 .tags{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
@@ -90,6 +84,28 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 .file{display:block;margin-top:6px}
 .ok{color:var(--own)}.err{color:var(--new)}
 @media(prefers-reduced-motion:no-preference){.result.on{animation:pop .25s ease-out}@keyframes pop{from{transform:translateY(8px);opacity:0}}}
+.wrap{max-width:1360px;margin:0 auto;padding:16px 24px 40px}
+.main{display:grid;gap:22px;align-items:start}
+@media(min-width:960px){.main{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}.side{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto;padding-right:4px}}
+.cam{position:relative;height:min(calc(100vh - 330px),760px);min-height:360px;width:100%;border-radius:18px;overflow:hidden;background:#000;border:1px solid var(--line)}
+@media(max-width:959px){.cam{height:60vh}}
+.cam video,.cam img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.guide{position:absolute;border:2px dashed rgba(255,255,255,.6);border-radius:14px;box-shadow:0 0 0 2000px rgba(0,0,0,.35);pointer-events:none;left:30%;top:4%;width:40%;height:92%}
+.guide span{position:absolute;top:-28px;left:50%;transform:translateX(-50%);font-size:13px;color:#fff;white-space:nowrap;background:rgba(0,0,0,.5);padding:2px 8px;border-radius:6px}
+.controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}
+.controls .shoot{grid-column:span 2}
+.controls select{grid-column:span 2;min-height:44px;border-radius:12px;border:1px solid var(--line);background:var(--panel);padding:0 10px;font-size:15px}
+@media(max-width:600px){.controls{grid-template-columns:1fr 1fr}.controls .shoot,.controls select{grid-column:span 2}}
+.kbd{font:600 12px Inter,sans-serif;border:1px solid currentColor;border-radius:5px;padding:1px 5px;margin-left:6px;opacity:.7}
+.recstat{font-size:13px;color:var(--mute);margin:6px 0 0}
+.result{margin-top:0}
+.res-top img{width:150px;border-radius:8px}
+.imgchoices{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-top:8px}
+.imgchoices button{padding:6px;height:auto;display:grid;gap:4px;text-align:left;font-size:13px}
+.imgchoices img{width:100%;border-radius:6px}
+.printings{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.printings button{min-height:36px;font-size:13px;padding:0 10px}
+.printings button.mine{border-color:var(--own);color:var(--own)}
 </style>
 </head>
 <body>
@@ -98,54 +114,56 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
     <h1>Card Scanner</h1>
     <button id="openSet" aria-label="Collections and settings">Collections</button>
   </header>
-  <p class="pill" id="collStatus">No collections loaded yet. Tap Collections to load your exports.</p>
+  <p class="pill" id="collStatus">No collections loaded yet. Click Collections to load your exports.</p>
 
+  <div class="main">
+  <div>
   <div class="seg" role="group" aria-label="Card game">
     <button data-g="auto" aria-pressed="true">Auto</button>
     <button data-g="poke" aria-pressed="false">Pokémon</button>
     <button data-g="ygo" aria-pressed="false">Yu-Gi-Oh!</button>
   </div>
   <div class="seg small" role="group" aria-label="Pokémon card type" id="varSeg">
-    <button data-v="any" aria-pressed="true">Any</button>
+    <button data-v="any" aria-pressed="true">Any type</button>
     <button data-v="Non-Holo" aria-pressed="false">Non-Holo</button>
     <button data-v="Holo" aria-pressed="false">Holo</button>
-    <button data-v="Reverse Holo" aria-pressed="false">Reverse</button>
+    <button data-v="Reverse Holo" aria-pressed="false">Reverse Holo</button>
   </div>
-
   <div class="cam" id="cam">
     <video id="video" playsinline muted></video>
     <img id="still" alt="" hidden>
-    <div class="camoff" id="camOff">Tap <b>&nbsp;Start camera&nbsp;</b> or use <b>&nbsp;Photo&nbsp;</b>.</div>
-    <div class="guide"><span>Fill the box with the card, keep it flat and well lit</span></div>
+    <div class="camoff" id="camOff">Click <b>&nbsp;Start webcam&nbsp;</b> to begin.</div>
+    <div class="guide" id="guide"><span>Fit the card to this box</span></div>
     <div class="busy" id="busy">Reading card…</div>
     <div class="autostat" id="autoStat">Auto-scan: looking for a card…</div>
   </div>
-  <div class="row">
-    <button class="shoot" id="shoot">Start camera</button>
-  </div>
-  <div class="toggles">
-    <button id="autoBtn" aria-pressed="false">Auto-scan off</button>
+  <div class="controls">
+    <button class="shoot" id="shoot">Start webcam</button>
+    <select id="camSel" aria-label="Webcam"><option value="">Default webcam</option></select>
+    <button id="autoBtn" aria-pressed="false">Auto-scan off<span class="kbd">A</span></button>
     <button id="soundBtn" aria-pressed="true">Sound on</button>
+    <label class="file" style="margin:0"><button id="photoBtn" style="width:100%">Load image</button>
+      <input id="photo" type="file" accept="image/*" hidden></label>
+    <button id="openSet2">Collections</button>
   </div>
-  <div class="row">
-    <label class="file" style="flex:1"><button id="photoBtn" style="width:100%">Photo / gallery</button>
-      <input id="photo" type="file" accept="image/*" capture="environment" hidden></label>
-  </div>
+  <p class="recstat" id="recStat">Loading card recogniser…</p>
   <form class="manual" id="manual">
     <input id="manualIn" placeholder="Or type: LOB-EN001, 4/102, Charizard 4/102" autocomplete="off" autocapitalize="off">
     <button>Look up</button>
   </form>
-
+  </div>
+  <div class="side">
   <section class="result" id="result" aria-live="polite"></section>
-
   <h3>This session <label><input type="checkbox" id="onlyFlag"> flagged only</label></h3>
   <ul class="hist" id="hist"></ul>
   <p class="empty" id="histEmpty">Scanned cards will appear here.</p>
+  </div>
+  </div>
 </div>
 
 <dialog id="settings">
   <h2>Collections</h2>
-  <p class="note">Your files stay on this phone. Nothing is uploaded anywhere.</p>
+  <p class="note">Your files stay on this computer. Nothing is uploaded anywhere.</p>
   <div class="field"><b>Pokémon – Poke Card Values export (.xlsx)</b>
     <input class="file" type="file" id="fPoke" accept=".xlsx,.xls,.csv"><span id="sPoke" class="note"></span></div>
   <div class="field"><b>Yu-Gi-Oh! – Dragon Shield export (.csv)</b>
@@ -369,29 +387,59 @@ function showStatus() {
   if (p) bits.push(`Pokémon: ${p.unique.toLocaleString()} cards`);
   if (y) bits.push(`Yu-Gi-Oh!: ${y.unique.toLocaleString()} printings`);
   $('#collStatus').textContent = bits.length ? bits.join(' · ') + ` · flag ≥ £${state.thr}` :
-    'No collections loaded yet. Tap Collections to load your exports.';
+    'No collections loaded yet. Click Collections to load your exports.';
   $('#sPoke').textContent = p ? `Loaded ${p.unique.toLocaleString()} rows (${new Date(p.at).toLocaleDateString('en-GB')})` : '';
   $('#sYgo').textContent = y ? `Loaded ${y.unique.toLocaleString()} printings (${new Date(y.at).toLocaleDateString('en-GB')})` : '';
   $('#addedCount').textContent = `${Object.keys(state.added).length} card(s).`;
 }
 
-/* ---------- camera ---------- */
+/* ---------- webcam ---------- */
 let stream = null;
+async function listCams() {
+  try {
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    const sel = $('#camSel'), keep = state.cam || '';
+    sel.innerHTML = devs.map((d, i) => `<option value="${esc(d.deviceId)}">${esc(d.label || 'Webcam ' + (i + 1))}</option>`).join('') || '<option value="">Default webcam</option>';
+    if (devs.some(d => d.deviceId === keep)) sel.value = keep;
+  } catch {}
+}
 async function startCam() {
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false });
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    const id = $('#camSel').value || state.cam;
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
+      ...(id ? { deviceId: { exact: id } } : {}), width: { ideal: 1920 }, height: { ideal: 1080 } } });
     const v = $('#video'); v.srcObject = stream; await v.play();
-    $('#camOff').hidden = true; $('#still').hidden = true; $('#cam').classList.remove('still'); $('#shoot').textContent = 'Scan card';
+    $('#camOff').hidden = true; $('#still').hidden = true; $('#cam').classList.remove('still');
+    $('#shoot').innerHTML = 'Scan card<span class="kbd">Space</span>';
+    await listCams(); placeGuide();
   } catch (e) {
-    $('#camOff').innerHTML = 'Camera unavailable here. Use <b>&nbsp;Photo / gallery&nbsp;</b> instead.';
+    stream = null;
+    $('#camOff').innerHTML = 'Webcam unavailable. Check it is plugged in and that the browser is allowed to use it.';
   }
 }
-function frameCanvas(src, w, h) {
-  // crop to the guide box, then greyscale + contrast
-  const cx = w * .12, cy = h * .08, cw = w * .76, ch = h * .84;
-  const scale = Math.min(1, 1600 / cw), c = document.createElement('canvas');
-  c.width = Math.round(cw * scale); c.height = Math.round(ch * scale);
-  const g = c.getContext('2d'); g.drawImage(src, cx, cy, cw, ch, 0, 0, c.width, c.height);
+// where the video is drawn inside the box (object-fit: contain)
+function videoRect() {
+  const box = $('#cam').getBoundingClientRect(), v = $('#video');
+  const vw = v.videoWidth || 1920, vh = v.videoHeight || 1080, s = Math.min(box.width / vw, box.height / vh);
+  const w = vw * s, h = vh * s;
+  return { x: (box.width - w) / 2, y: (box.height - h) / 2, w, h, s };
+}
+const CARD = 63 / 88;
+function placeGuide() {
+  const r = videoRect(); let gh = r.h * .92, gw = gh * CARD;
+  if (gw > r.w * .92) { gw = r.w * .92; gh = gw / CARD; }
+  const g = $('#guide'); g.style.left = r.x + (r.w - gw) / 2 + 'px'; g.style.top = r.y + (r.h - gh) / 2 + 'px';
+  g.style.width = gw + 'px'; g.style.height = gh + 'px';
+  return { r, gw, gh };
+}
+new ResizeObserver(() => placeGuide()).observe($('#cam'));
+function grabVideo() {           // the guide area, in full webcam resolution
+  const { r, gw, gh } = placeGuide(), v = $('#video');
+  const sx = (r.w - gw) / 2 / r.s, sy = (r.h - gh) / 2 / r.s, sw = gw / r.s, sh = gh / r.s;
+  const k = Math.min(1, 1200 / sh), c = document.createElement('canvas');
+  c.width = Math.round(sw * k); c.height = Math.round(sh * k);
+  c.getContext('2d').drawImage(v, sx, sy, sw, sh, 0, 0, c.width, c.height);
   return c;
 }
 function prep(c, y0 = 0, y1 = 1, up = 1) {
@@ -401,14 +449,99 @@ function prep(c, y0 = 0, y1 = 1, up = 1) {
   const g = o.getContext('2d'); g.filter = 'grayscale(1) contrast(1.6)';
   g.drawImage(c, 0, sy, c.width, sh, 0, 0, o.width, o.height); return o;
 }
-// the camera preview uses object-fit:cover, so map the guide box from the visible area
-function grabVideo() {
-  const v = $('#video'), box = $('#cam').getBoundingClientRect();
-  const vw = v.videoWidth, vh = v.videoHeight, s = Math.max(box.width / vw, box.height / vh);
-  const visW = box.width / s, visH = box.height / s, ox = (vw - visW) / 2, oy = (vh - visH) / 2;
-  const tmp = document.createElement('canvas'); tmp.width = visW; tmp.height = visH;
-  tmp.getContext('2d').drawImage(v, ox, oy, visW, visH, 0, 0, visW, visH);
-  return frameCanvas(tmp, visW, visH);
+
+/* ---------- picture recognition (runs in the browser) ---------- */
+const ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
+const T = { none: .50, ok: .60, margin: .03 };   // calibrated on 800 held-out cards
+const rec = { ready: false };
+const loadScript = src => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.append(s); });
+async function bin(url) { const r = await fetch(url); if (!r.ok) throw new Error(url + ' ' + r.status); return new Int8Array(await r.arrayBuffer()); }
+function loadRec() {
+  return rec.loading || (rec.loading = (async () => {
+    $('#recStat').textContent = 'Loading card recogniser (about 35 MB the first time, then it is cached)…';
+    await loadScript(ORT + 'ort.min.js');
+    ort.env.wasm.wasmPaths = ORT; ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 2) : 1;
+    const [sess, ip, iy, mp, my] = await Promise.all([
+      ort.InferenceSession.create('data/model.onnx', { executionProviders: ['wasm'], graphOptimizationLevel: 'all' }),
+      bin('data/idx_p.bin'), bin('data/idx_y.bin'), getJSON('data/meta_p.json'), getJSON('data/meta_y.json')]);
+    Object.assign(rec, { sess, ip, iy, mp, my, D: ip.length / mp.cards.length, ready: true });
+    const c = document.createElement('canvas'); c.width = 224; c.height = 320; await embed(c);   // warm up
+    $('#recStat').textContent = `Card recogniser ready · ${(mp.cards.length + my.cards.length).toLocaleString()} card pictures`;
+  })().catch(e => { rec.loading = null; $('#recStat').textContent = 'Card recogniser could not load – scanning will use text only. (' + e.message + ')'; throw e; }));
+}
+const EW = 224, EH = 320, ecv = document.createElement('canvas'); ecv.width = EW; ecv.height = EH;
+async function embed(c) {
+  const g = ecv.getContext('2d', { willReadFrequently: true }); g.drawImage(c, 0, 0, EW, EH);
+  const px = g.getImageData(0, 0, EW, EH).data, n = EW * EH, x = new Float32Array(3 * n);
+  for (let i = 0; i < n; i++) { x[i] = px[i * 4] / 255; x[n + i] = px[i * 4 + 1] / 255; x[2 * n + i] = px[i * 4 + 2] / 255; }
+  const out = await rec.sess.run({ x: new ort.Tensor('float32', x, [1, 3, EH, EW]) });
+  return out.v.data;
+}
+function search(v, k = 12) {
+  const D = rec.D, top = [];
+  const scan = (g, I) => {
+    for (let r = 0, o = 0; o < I.length; r++, o += D) {
+      let s = 0; for (let d = 0; d < D; d++) s += v[d] * I[o + d];
+      s /= 254;
+      if (top.length < k || s > top[top.length - 1].s) {
+        top.push({ g, i: r, s }); top.sort((a, b) => b.s - a.s); if (top.length > k) top.pop();
+      }
+    }
+  };
+  if (state.game !== 'ygo') scan('p', rec.ip);
+  if (state.game !== 'poke') scan('y', rec.iy);
+  return top;
+}
+const ident = t => t.g === 'p' ? 'p:' + rec.mp.cards[t.i][0] : 'y:' + rec.my.cards[t.i][2];
+const thumb = t => t.g === 'p' ? `https://assets.tcgdex.net/en/${pokeSeries(t)}/${rec.mp.cards[t.i][3]}/${rec.mp.cards[t.i][2]}/low.webp`
+                                : `https://images.ygoprodeck.com/images/cards_small/${rec.my.cards[t.i][0]}.jpg`;
+const pokeSeries = t => (rec.mp.img || {})[rec.mp.cards[t.i][3]] || '';
+function pokeNumMatch(t, n) {
+  const [, , local, sid] = rec.mp.cards[t.i], off = (rec.mp.sets[sid] || [])[1];
+  if (n.total && off && Core.normNum(local + '/' + off) === n.key) return 2;
+  return Core.normNum(local) === Core.normNum(n.local) ? 1 : 0;
+}
+
+// Main recogniser: picture first, text to confirm when needed. Returns {id} when a card was shown.
+async function identify(c, { quiet = false, top = null } = {}) {
+  if (!rec.ready) { if (quiet) return null; return textScan(c); }
+  top = top || search(await embed(c));
+  const best = top[0];
+  if (!best || best.s < T.none) { if (quiet) return null; return textScan(c); }
+  const other = top.find(t => ident(t) !== ident(best)), margin = best.s - (other ? other.s : 0);
+  const sure = best.s >= T.ok && margin >= T.margin;
+  if (best.g === 'p') {
+    let pick = sure ? best : null;
+    if (!pick) {                                     // ask the text reader to settle it
+      const text = await ocr(prep(c, .55, 1, 2)), nums = Core.pokeNums(text);
+      const cands = top.filter(t => t.g === 'p').slice(0, 10);
+      let bestScore = 0;
+      for (const t of cands) for (const n of nums) { const sc = pokeNumMatch(t, n); if (sc > bestScore) { bestScore = sc; pick = t; } }
+      if (!pick && best.s >= T.ok) pick = best;
+      if (!pick) { if (quiet) return null; renderImgChoice(top.slice(0, 6)); return { id: ident(best) }; }
+    }
+    const card = await getJSON('https://api.tcgdex.net/v2/en/cards/' + encodeURIComponent(rec.mp.cards[pick.i][0])).catch(() => null);
+    if (!card) { if (!quiet) showError('Recognised the card but could not fetch its details – check your internet connection.'); return null; }
+    await showPoke(card, null); return { id: ident(pick) };
+  }
+  // Yu-Gi-Oh!: the picture gives the card; the set code (text) gives the printing
+  if (!sure && quiet && best.s < T.ok) return null;
+  const m = rec.my.cards[best.i], codes = m[3].map(Core.normCode);
+  const text = await ocr(prep(c, .6, .85, 2)) + '\n' + (await ocr(prep(c, .5, 1, 1.5)));
+  const read = Core.ygoCodes(text).map(Core.normCode);
+  let code = read.find(k => codes.includes(k));
+  if (!code) {          // a code read imperfectly: match on the number part
+    const tail = read.map(k => k.split('-')[1]).filter(Boolean);
+    const hits = codes.filter(k => tail.some(t => k.endsWith('-' + t)));
+    if (hits.length === 1) code = hits[0];
+  }
+  if (code) { const hit = await ygoLookup([code]); if (hit) { await showYgo(hit); return { id: ident(best) }; } }
+  await showYgoCard(m); return { id: ident(best) };
+}
+async function textScan(c) {           // the original text-only route
+  let text = await ocr(prep(c)), found = detect(text);
+  if (!found.ygo.length && !found.poke.length) { text += '\n' + await ocr(prep(c, .5, 1, 2)); found = detect(text); }
+  return resolve(found, text);
 }
 
 let worker = null;
@@ -419,16 +552,10 @@ async function ocr(canvas) {
 }
 
 async function scanCanvas(c) {
-  $('#busy').classList.add('on');
-  try {
-    let text = await ocr(prep(c));
-    let found = detect(text);
-    if (!found.ygo.length && !found.poke.length) {           // second try: lower part, enlarged
-      text += '\n' + await ocr(prep(c, .5, 1, 2)); found = detect(text);
-    }
-    await resolve(found, text);
-  } catch (e) { showError('Could not read that one. Try again with more light, or type the code below.'); console.error(e); }
-  finally { $('#busy').classList.remove('on'); }
+  $('#busy').classList.add('on'); manualBusy = true;
+  try { await identify(c); }
+  catch (e) { showError('Could not read that one. Try again with more light, or type the code below.'); console.error(e); }
+  finally { $('#busy').classList.remove('on'); manualBusy = false; }
 }
 
 function detect(text) {
@@ -562,8 +689,48 @@ function pokeView(c) {
   return { html, key, name: card.name, code: num + (sel ? ' ' + sel : ''), owned: qty, best };
 }
 
+async function showYgoCard(m) {
+  await fx();
+  let d = ygoCache[m[2]];
+  if (!d) try { d = ygoCache[m[2]] = (await getJSON('https://db.ygoprodeck.com/api/v7/cardinfo.php?id=' + m[2])).data[0]; } catch {}
+  cur = { game: 'ygocard', m, d, sel: null }; return renderCur(true);
+}
+function ygoCardView(c) {
+  const { m, d } = c, name = m[1], y = state.ygo, key = 'YC:' + m[2];
+  const codes = [...new Set(m[3].map(Core.normCode))];
+  const mine = y ? codes.filter(k => y.codes[k]) : [];
+  const qty = (y && y.names[Core.normName(name)]) || (isAdded(key) ? 1 : 0);
+  const r = state.fx || FALLBACK, rows = [];
+  let best = 0, top = 0;
+  if (d) {
+    const cp = (d.card_prices || [])[0] || {};
+    if (+cp.cardmarket_price) rows.push({ k: 'Cardmarket, cheapest printing', v: cp.cardmarket_price * r.EUR });
+    if (+cp.tcgplayer_price) rows.push({ k: 'TCGplayer, cheapest printing', v: cp.tcgplayer_price * r.USD });
+    for (const s of d.card_sets || []) top = Math.max(top, (+s.set_price || 0) * r.USD);
+    if (top) rows.push({ k: 'Most valuable printing (TCGplayer)', v: top, cls: 'dim' });
+    best = Math.max(0, ...rows.filter(x => !x.cls).map(x => x.v));
+  }
+  const list = [...mine, ...codes.filter(k => !mine.includes(k))].slice(0, 40);
+  const html = `<div class="res-top"><img src="https://images.ygoprodeck.com/images/cards_small/${m[0]}.jpg" alt=""><div><h2>${esc(name)}</h2>
+    <div class="sub">Printing not confirmed · ${codes.length} printing${codes.length === 1 ? '' : 's'}</div></div></div>
+    ${verdictHtml(qty, best, !rows.length, false).replace('In collection', 'You own this card').replace('NEW – not in collection', 'NEW – you have no copies')}
+    ${priceTable(rows)}
+    ${top >= state.thr && best < state.thr ? `<p class="note">Some printings are worth ${gbp(top)} – pick yours below to check.</p>` : ''}
+    <div class="chiplab">Couldn't read the set code. Which printing is it?${mine.length ? ' Yours are marked.' : ''}</div>
+    <div class="printings">${list.map(k => `<button data-code="${esc(k)}" class="${mine.includes(k) ? 'mine' : ''}">${esc(k)}${mine.includes(k) ? ' ✓' : ''}</button>`).join('')}</div>
+    ${!qty ? addBtn(key, null) : ''}`;
+  return { html, key, name, code: 'printing ?', owned: qty, best };
+}
+function renderImgChoice(top) {
+  const seen = new Set(), list = top.filter(t => { const id = ident(t); if (seen.has(id)) return false; seen.add(id); return true; }).slice(0, 6);
+  window._imgc = list; cur = null;
+  show(`<h2>Which card is it?</h2><p class="note">These are the closest matches. Click the right one, or hold the card steadier and scan again.</p>
+    <div class="imgchoices">${list.map((t, i) => { const m = t.g === 'p' ? rec.mp.cards[t.i] : rec.my.cards[t.i];
+      return `<button data-img="${i}"><img src="${thumb(t)}" alt="">${esc(m[1])}</button>`; }).join('')}</div>`, true);
+}
+
 function renderCur(fresh) {
-  const v = cur.game === 'ygo' ? ygoView(cur) : pokeView(cur);
+  const v = cur.game === 'ygo' ? ygoView(cur) : cur.game === 'ygocard' ? ygoCardView(cur) : pokeView(cur);
   show(v.html, fresh);
   log({ key: v.key, name: v.name, code: v.code, isNew: !v.owned, best: v.best });
   if (fresh) alertFor(v);
@@ -649,33 +816,31 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 let lastBanner = 0;
 const autoStat = t => { if (Date.now() - lastBanner > 5000) $('#autoStat').textContent = t; };
 async function autoLoop() {
+  let prev = null, steady = 0, empty = 0, lastShown = null;
   while (auto) {
     const v = $('#video');
-    if (!stream || !v.videoWidth || document.hidden || manualBusy) { await sleep(500); continue; }
+    if (!stream || !v.videoWidth || document.hidden || manualBusy) { await sleep(300); continue; }
     try {
-      const c = grabVideo(), odd = frameNo++ % 2;
-      const text = await ocr(odd ? prep(c, .5, 1, 2) : prep(c));      // alternate: whole card / enlarged lower half
-      if (!auto) break;
-      const found = detect(text), sigs = [...found.ygo, ...found.poke.map(p => p.key)];
-      if (!sigs.length) { autoStat('Auto-scan: looking for a card…'); if (Date.now() - lastSigAt > 4000) lastSig = null; }
-      else if (sigs.includes(lastSig)) { lastSigAt = Date.now(); autoStat('Auto-scan: same card – show the next one'); }
-      else if (sigs.every(s => failed[s] > Date.now() - 30000)) autoStat('Auto-scan: hold steady…');
-      else {
-        autoStat('Auto-scan: checking ' + sigs[0] + '…');
-        const res = await resolve(found, text, true);
-        if (res) { lastSig = sigs[0]; lastSigAt = Date.now(); }
-        else sigs.forEach(s => failed[s] = Date.now());
-      }
-    } catch (e) { console.warn(e); }
-    await sleep(250);
+      if (!rec.ready) { autoStat('Auto-scan: waiting for the card recogniser…'); await loadRec().catch(() => sleep(3000)); continue; }
+      const c = grabVideo(), top = search(await embed(c)), b = top[0];
+      if (!b || b.s < T.none) { if (++empty >= 3) lastShown = null; prev = null; steady = 0; autoStat('Auto-scan: looking for a card…'); await sleep(120); continue; }
+      empty = 0;
+      const id = ident(b);
+      if (id === lastShown) { autoStat('Auto-scan: same card – show the next one'); await sleep(150); continue; }
+      steady = id === prev ? steady + 1 : 1; prev = id;
+      if (steady < 2) { await sleep(60); continue; }        // wait until the card is still
+      autoStat('Auto-scan: checking…');
+      const res = await identify(c, { quiet: true, top });
+      lastShown = res ? res.id : id;
+    } catch (e) { console.warn(e); await sleep(500); }
   }
 }
 async function setAuto(on) {
-  auto = on; $('#autoBtn').setAttribute('aria-pressed', on); $('#autoBtn').textContent = on ? 'Auto-scan on' : 'Auto-scan off';
-  $('#autoStat').classList.toggle('on', on); $('#shoot').hidden = on;
+  auto = on; $('#autoBtn').setAttribute('aria-pressed', on); $('#autoBtn').innerHTML = (on ? 'Auto-scan on' : 'Auto-scan off') + '<span class="kbd">A</span>';
+  $('#autoStat').classList.toggle('on', on); 
   if (on) { audio(); if (!stream) await startCam(); if (!stream) return setAuto(false);
     if (!$('#still').hidden) { $('#still').hidden = true; $('#cam').classList.remove('still'); }
-    autoStat(worker ? 'Auto-scan: looking for a card…' : 'Auto-scan: preparing text reader…'); autoLoop(); }
+    autoStat('Auto-scan: looking for a card…'); autoLoop(); }
 }
 let manualBusy = false;
 
@@ -703,11 +868,9 @@ $('#photo').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   if (auto) setAuto(false);
   const img = $('#still'); img.src = URL.createObjectURL(f); await img.decode(); img.hidden = false; $('#camOff').hidden = true; $('#cam').classList.add('still');
-  const bmp = document.createElement('canvas'), s = Math.min(1, 2200 / Math.max(img.naturalWidth, img.naturalHeight));
+  const bmp = document.createElement('canvas'), s = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
   bmp.width = img.naturalWidth * s; bmp.height = img.naturalHeight * s; bmp.getContext('2d').drawImage(img, 0, 0, bmp.width, bmp.height);
-  $('#busy').classList.add('on');
-  try { const text = await ocr(prep(bmp)); const f2 = detect(text); if (f2.ygo.length || f2.poke.length) await resolve(f2, text); else await scanCanvas(bmp); }
-  finally { $('#busy').classList.remove('on'); e.target.value = ''; }
+  await scanCanvas(bmp); e.target.value = '';
 };
 $('#manual').onsubmit = async e => {
   e.preventDefault(); audio(); const t = $('#manualIn').value.trim(); if (!t) return;
@@ -723,6 +886,11 @@ $('#manual').onsubmit = async e => {
 $('#result').onclick = async e => {
   const p = e.target.closest('[data-pick]'), a = e.target.closest('[data-add]'), s = e.target.closest('[data-sel]');
   if (p) { const c = window._cands[+p.dataset.pick]; await showPoke(c, window._n && window._n.local ? window._n : null); }
+  const ci = e.target.closest('[data-code]'), im = e.target.closest('[data-img]');
+  if (ci) { const hit = await ygoLookup([ci.dataset.code]); if (hit) await showYgo(hit); else showError('Could not find ' + ci.dataset.code + '.'); }
+  if (im) { const t = window._imgc[+im.dataset.img];
+    if (t.g === 'p') { const card = await getJSON('https://api.tcgdex.net/v2/en/cards/' + encodeURIComponent(rec.mp.cards[t.i][0])).catch(() => null); if (card) await showPoke(card, null); }
+    else await showYgoCard(rec.my.cards[t.i]); }
   if (s && cur) { cur.sel = cur.sel === s.dataset.sel ? null : s.dataset.sel; renderCur(false); }
   if (a) { state.added[a.dataset.add] = Date.now(); db.set('added', state.added);
            if (cur) renderCur(false); else a.outerHTML = '<p class="note ok">Marked as added.</p>'; showStatus(); }
@@ -730,7 +898,13 @@ $('#result').onclick = async e => {
 $('#onlyFlag').onchange = drawHist;
 
 
-$('#openSet').onclick = () => $('#settings').showModal();
+$('#openSet').onclick = $('#openSet2').onclick = () => $('#settings').showModal();
+$('#camSel').onchange = () => { state.cam = $('#camSel').value; db.set('cam', state.cam); if (stream) startCam(); };
+document.addEventListener('keydown', e => {
+  if (e.target.closest('input,select,textarea,dialog') || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.code === 'Space') { e.preventDefault(); $('#shoot').click(); }
+  if (e.key === 'a' || e.key === 'A') setAuto(!auto);
+});
 $('#closeSet').onclick = () => $('#settings').close();
 $('#thr').onchange = e => { state.thr = Math.max(0, +e.target.value || 0); db.set('thr', state.thr); showStatus(); drawHist(); };
 $('#fYgo').onchange = async e => {
@@ -753,8 +927,11 @@ $('#clearAdded').onclick = () => { state.added = {}; db.set('added', {}); showSt
 $('#clearAll').onclick = async () => { for (const k of ['poke', 'ygo', 'added']) await db.del(k); state.poke = state.ygo = null; state.added = {}; showStatus(); };
 
 (async () => {
-  const [poke, ygo, added, thr, fxv, sets, variant, sound] = await Promise.all(['poke', 'ygo', 'added', 'thr', 'fx', 'sets', 'variant', 'sound'].map(db.get));
-  Object.assign(state, { poke, ygo, added: added || {}, thr: thr ?? 1, fx: fxv, sets, variant: variant || 'any', sound: sound ?? true });
+  const [poke, ygo, added, thr, fxv, sets, variant, sound, cam] = await Promise.all(['poke', 'ygo', 'added', 'thr', 'fx', 'sets', 'variant', 'sound', 'cam'].map(db.get));
+  Object.assign(state, { poke, ygo, added: added || {}, thr: thr ?? 1, fx: fxv, sets, variant: variant || 'any', sound: sound ?? true, cam });
+  loadRec().catch(() => {});
+  Tesseract.createWorker('eng').then(w => { worker = worker || w; }).catch(() => {});
+  listCams();
   $('#thr').value = state.thr; showStatus(); drawHist(); paintVar(); paintSound();
   if (ygo && ygo.v !== 2) $('#collStatus').textContent += ' · Re-load your Dragon Shield file to enable rarity matching.';
   if (!poke && !ygo) $('#settings').showModal();
