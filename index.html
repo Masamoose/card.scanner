@@ -147,6 +147,12 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
     <button data-v="Holo" aria-pressed="false">Holo</button>
     <button data-v="Reverse Holo" aria-pressed="false">Reverse Holo</button>
   </div>
+  <div class="seg small" role="group" aria-label="Yu-Gi-Oh! rarity" id="rarSeg">
+    <button data-r="any" aria-pressed="true">Any rarity</button>
+    <button data-r="common" aria-pressed="false">Common</button>
+    <button data-r="rare" aria-pressed="false">Rare</button>
+    <button data-r="holo" aria-pressed="false" title="Every foil rarity: Super, Ultra, Secret, Ultimate, Gold, Platinum, Starlight, Quarter Century…">Holo (SR, UR, ScR…)</button>
+  </div>
   <div class="cam" id="cam">
     <video id="video" playsinline muted></video>
     <img id="still" alt="" hidden>
@@ -357,9 +363,15 @@ const Core = (() => {
     'prismatic secret rare': 'PScR', "collector's rare": 'CR', 'quarter century secret rare': 'QCScR', 'starlight rare': 'StR',
     'starfoil rare': 'SFR', 'mosaic rare': 'MSR', 'shatterfoil rare': 'SHR', 'ultra parallel rare': 'UPR',
     'duel terminal ultra parallel rare': 'DUPR', 'duel terminal rare parallel rare': 'DRPR', 'duel terminal normal parallel rare': 'DNPR',
-    'extra secret rare': 'EScR', '10000 secret rare': '10000ScR', 'secret pharaoh\'s rare': 'SPhR' };
-  const rarCode = (name, code) => RAR[String(name || '').toLowerCase()] || String(code || '').replace(/[()]/g, '') ||
-    String(name || '').split(/\s+/).map(w => w[0]).join('').toUpperCase();
+    'extra secret rare': 'EScR', '10000 secret rare': '10000ScR', 'secret pharaoh\'s rare': 'SPhR',
+    'duel terminal super parallel rare': 'DSPR', 'super parallel rare': 'SPR', 'normal parallel rare': 'NPR',
+    'grand master rare': 'GMR', "ultra rare (pharaoh's rare)": 'URPR', 'starfoil': 'SFR', 'ghost/gold rare': 'GGR',
+    'ultra secret rare': 'UScR', 'extra secret': 'EScR', 'duel terminal normal rare parallel rare': 'DNPR', 'cr': 'CR' };
+  // rarity groups: Common (non-foil), Rare (silver name), Holo (every foil rarity). Unknown labels belong to no group.
+  const COMMONS = new Set(['C', 'SP', 'SSP']), RARES = new Set(['R']);
+  const HOLOS = new Set(Object.values(RAR).filter(x => !COMMONS.has(x) && !RARES.has(x)));
+  const rarGroup = code => COMMONS.has(code) ? 'common' : RARES.has(code) ? 'rare' : HOLOS.has(code) ? 'holo' : null;
+  const rarCode = (name, code) => RAR[String(name || '').toLowerCase()] || String(code || '').replace(/[()]/g, '') || String(name || '').trim();
 
   // Pokémon variants as Poke Card Values names them
   const VARS = [['normal', 'Non-Holo'], ['holo', 'Holo'], ['reverse', 'Reverse Holo']];
@@ -383,7 +395,7 @@ const Core = (() => {
     return out;
   }
 
-  return { rarCode, pokeVariants, pokePriceRows, digitVariants, nameInText, normName, normCode, normNum, parseCsv, parseYgo, parsePoke, ygoCodes, pokeNums, pokeOwned, pokeNameFromText };
+  return { rarCode, rarGroup, pokeVariants, pokePriceRows, digitVariants, nameInText, normName, normCode, normNum, parseCsv, parseYgo, parsePoke, ygoCodes, pokeNums, pokeOwned, pokeNameFromText };
 })();
 if (typeof module !== 'undefined') module.exports = Core;
 </script>
@@ -391,7 +403,7 @@ if (typeof module !== 'undefined') module.exports = Core;
 {
 const $ = s => document.querySelector(s);
 const FALLBACK = { USD: 0.76, EUR: 0.84 };
-let state = { game: 'auto', variant: 'any', sound: true, yFolders: [], y3: false, thr: 1, poke: null, ygo: null, added: {}, fx: null, sets: null, batch: [] };
+let state = { game: 'auto', variant: 'any', yRar: 'any', sound: true, yFolders: [], y3: false, thr: 1, poke: null, ygo: null, added: {}, fx: null, sets: null, batch: [] };
 
 /* ---------- storage (IndexedDB, with graceful failure) ---------- */
 const db = (() => {
@@ -454,11 +466,20 @@ function yWhere(code) {              // which folders hold this printing
   return Object.entries(e.fq).sort((a, b) => b[1] - a[1]).map(([f, q]) => `${f} ×${q}${fs && !fs.includes(f) ? ' (not checked)' : ''}`).join(', ');
 }
 const copies = n => n + (n === 1 ? ' copy' : ' copies');
+const GRP = { common: 'Common', rare: 'Rare', holo: 'Holo' };
+const yGrp = () => state.yRar && state.yRar !== 'any' ? state.yRar : null;
+function yCodeG(code, grp) {         // copies of this printing within a rarity group (Common / Rare / Holo)
+  const e = state.ygo && state.ygo.codes[code]; if (!e) return 0;
+  const rs = Object.keys(e.rs || {});
+  if (!grp || !rs.length) return yCode(code);
+  return rs.filter(r => Core.rarGroup(r) === grp).reduce((a, r) => a + yCode(code, r), 0);
+}
 function paintYgoRow() {
   const fs = yFs();
   $('#folderBtn').textContent = 'Yu-Gi-Oh! folders: ' + (!fs ? 'all' : fs.length === 1 ? fs[0] : fs[0] + ' +' + (fs.length - 1));
   $('#y3Btn').setAttribute('aria-pressed', state.y3); $('#y3Btn').textContent = 'Flag under 3 copies: ' + (state.y3 ? 'on' : 'off');
-  $('#ygoRow').hidden = state.game === 'poke';
+  $('#ygoRow').hidden = $('#rarSeg').hidden = state.game === 'poke';
+  document.querySelectorAll('[data-r]').forEach(x => x.setAttribute('aria-pressed', x.dataset.r === (state.yRar || 'any')));
 }
 function drawFolders() {
   const y = state.ygo, q = $('#fFilter').value.trim().toLowerCase();
@@ -753,10 +774,13 @@ let cur = null;
 const isAdded = (k, sel) => state.added[k + '|' + (sel || 'any')] || state.added[k + '|any'];
 
 function ygoView(c) {
-  const { hit, det } = c, own = hit.owned, opts = det.rar;
+  const { hit, det } = c, own = hit.owned, grp = yGrp();
+  const inG = grp ? det.rar.filter(o => Core.rarGroup(o.code) === grp) : det.rar;
+  const offGroup = grp && det.rar.length && !inG.length;      // this printing doesn't come in the chosen rarity
+  const opts = inG.length ? inG : det.rar;
   const sel = c.sel || (opts.length === 1 ? opts[0].code : null);
   const name = hit.info ? hit.info.name : own.n, key = 'Y:' + hit.code;
-  let qty = yCode(hit.code, sel);
+  let qty = sel ? yCode(hit.code, sel) : grp && !offGroup ? yCodeG(hit.code, grp) : yCode(hit.code);
   if (!qty && isAdded(key, sel)) qty = 1;
   const nameQty = Math.max(yName(name), qty), ps = playset(nameQty);
   const extra = [...(nameQty > qty ? [`<span class="tag t-count">${copies(nameQty)} of this card in all printings</span>`] : []), ...ps.tag];
@@ -767,14 +791,15 @@ function ygoView(c) {
   const otherPrint = !qty && nameQty;
   const html = `<div class="res-top">${det.img ? `<img src="https://images.ygoprodeck.com/images/cards_small/${det.img}.jpg" alt="">` : ''}<div><h2>${esc(name)}</h2>
     <div class="sub">${esc(hit.code)} · ${esc(hit.info ? hit.info.set_name : own.s)}${sel ? ' · ' + esc((opts.find(o => o.code === sel) || {}).name || sel) : ''}</div></div></div>
-    ${opts.length > 1 ? `<div class="chiplab">${sel ? 'Rarity' : 'Which rarity is it? This code was printed in ' + opts.length}</div>
+    ${offGroup ? `<p class="note">This printing isn't listed in ${GRP[grp]} rarity – showing the rarities it does come in.</p>` : ''}
+    ${opts.length > 1 ? `<div class="chiplab">${sel ? 'Rarity' : `Which rarity is it? This code has ${opts.length} ${grp && !offGroup ? GRP[grp] + ' ' : ''}rarities`}</div>
       <div class="chips">${opts.map(o => `<button data-sel="${esc(o.code)}" aria-pressed="${o.code === sel}">${esc(o.name)}</button>`).join('')}</div>` : ''}
     ${verdictHtml(qty, best, !rows.length, !sel && opts.length > 1, extra)}
     ${priceTable(rows)}
     ${own ? `<p class="note">${yFs() ? 'Across all your folders, this printing' : 'This printing'}: ${esc(ownRar || own.q)} (${esc(own.p.join(', '))}) · in ${esc(yWhere(hit.code))}. Dragon Shield value: ${own.m.toFixed(2)}</p>` : ''}
     ${otherPrint ? `<p class="note">You have ${copies(otherPrint)} of this card from other sets${yFs() ? ' in the checked folders' : ''}, but not this printing.</p>` : ''}
     ${!qty ? addBtn(key, sel) : ''}`;
-  return { html, key, name, code: hit.code + (sel ? ' ' + sel : ''), owned: qty, best, need: ps.need, have: nameQty };
+  return { html, key, name, code: hit.code + (sel ? ' ' + sel : grp ? ' ' + GRP[grp] : ''), owned: qty, best, need: ps.need, have: nameQty };
 }
 
 function pokeView(c) {
@@ -817,12 +842,23 @@ async function showYgoCard(m) {
 }
 function ygoCardView(c) {
   const { m, d } = c, name = m[1], y = state.ygo, key = 'YC:' + m[2];
-  const codes = [...new Set(m[3].map(Core.normCode))];
-  const mine = y ? codes.filter(k => yCode(k) > 0) : [];
-  const qty = yName(name) || (isAdded(key) ? 1 : 0), ps = playset(qty);
+  const grp = yGrp(), rmap = {};
+  for (const s of (d && d.card_sets) || []) (rmap[Core.normCode(s.set_code)] ||= []).push(Core.rarGroup(Core.rarCode(s.set_rarity, s.set_rarity_code)));
+  const all = [...new Set(m[3].map(Core.normCode))];
+  const codes = grp ? all.filter(k => !rmap[k] || rmap[k].includes(grp) || yCodeG(k, grp) > 0) : all;
+  const mine = y ? codes.filter(k => yCodeG(k, grp) > 0) : [];
+  const total = yName(name), ps = playset(total);
+  const qty = (grp ? mine.reduce((a, k) => a + yCodeG(k, grp), 0) : total) || (isAdded(key, grp) ? 1 : 0);
+  const extra = [...(grp && total > qty ? [`<span class="tag t-count">${copies(total)} in all rarities</span>`] : []), ...ps.tag];
   const r = state.fx || FALLBACK, rows = [];
   let best = 0, top = 0;
-  if (d) {
+  if (d && grp) {                      // prices of this card's printings in the chosen rarity
+    const ps2 = d.card_sets.filter(s => Core.rarGroup(Core.rarCode(s.set_rarity, s.set_rarity_code)) === grp && +s.set_price > 0).map(s => s.set_price * r.USD);
+    if (ps2.length) { best = Math.min(...ps2); top = Math.max(...ps2);
+      rows.push({ k: `Cheapest ${GRP[grp]} printing (TCGplayer)`, v: best });
+      if (top > best) rows.push({ k: `Most valuable ${GRP[grp]} printing (TCGplayer)`, v: top, cls: 'dim' }); }
+  }
+  if (d && !rows.length) {
     const cp = (d.card_prices || [])[0] || {};
     if (+cp.cardmarket_price) rows.push({ k: 'Cardmarket, cheapest printing', v: cp.cardmarket_price * r.EUR });
     if (+cp.tcgplayer_price) rows.push({ k: 'TCGplayer, cheapest printing', v: cp.tcgplayer_price * r.USD });
@@ -832,15 +868,15 @@ function ygoCardView(c) {
   }
   const list = [...mine, ...codes.filter(k => !mine.includes(k))].slice(0, 40);
   const html = `<div class="res-top"><img src="https://images.ygoprodeck.com/images/cards_small/${m[0]}.jpg" alt=""><div><h2>${esc(name)}</h2>
-    <div class="sub">Printing not confirmed · ${codes.length} printing${codes.length === 1 ? '' : 's'}</div></div></div>
-    ${verdictHtml(qty, best, !rows.length, false, ps.tag).replace('In collection', 'You own this card').replace('NEW – not in collection', 'NEW – you have no copies')}
-    ${mine.length ? `<p class="note">Your copies: ${esc(mine.map(k => `${k} ×${yCode(k)}`).join(', '))}</p>` : ''}
+    <div class="sub">Printing not confirmed · ${codes.length} ${grp ? GRP[grp] + ' ' : ''}printing${codes.length === 1 ? '' : 's'}</div></div></div>
+    ${verdictHtml(qty, best, !rows.length, false, extra).replace('In collection', 'You own this card').replace('NEW – not in collection', 'NEW – you have no copies')}
+    ${mine.length ? `<p class="note">Your ${grp ? GRP[grp] + ' ' : ''}copies: ${esc(mine.map(k => `${k} ×${yCodeG(k, grp)}`).join(', '))}</p>` : ''}
     ${priceTable(rows)}
     ${top >= state.thr && best < state.thr ? `<p class="note">Some printings are worth ${gbp(top)} – pick yours below to check.</p>` : ''}
     <div class="chiplab">Couldn't read the set code. Which printing is it?${mine.length ? ' Yours are marked.' : ''}</div>
-    <div class="printings">${list.map(k => `<button data-code="${esc(k)}" class="${mine.includes(k) ? 'mine' : ''}">${esc(k)}${mine.includes(k) ? ' ✓' + yCode(k) : ''}</button>`).join('')}</div>
-    ${!qty ? addBtn(key, null) : ''}`;
-  return { html, key, name, code: 'printing ?', owned: qty, best, need: ps.need, have: qty };
+    <div class="printings">${list.map(k => `<button data-code="${esc(k)}" class="${mine.includes(k) ? 'mine' : ''}">${esc(k)}${mine.includes(k) ? ' ✓' + yCodeG(k, grp) : ''}</button>`).join('')}</div>
+    ${!qty ? addBtn(key, grp) : ''}`;
+  return { html, key, name, code: 'printing ?' + (grp ? ' ' + GRP[grp] : ''), owned: qty, best, need: ps.need, have: total };
 }
 function playset(n) {     // Yu-Gi-Oh!: flag when fewer than 3 copies of the card
   if (!state.y3 || n >= 3) return { need: 0, tag: [] };
@@ -994,6 +1030,9 @@ document.querySelectorAll('[data-v]').forEach(b => b.onclick = () => {
   state.variant = b.dataset.v; db.set('variant', state.variant); paintVar();
 });
 const paintVar = () => document.querySelectorAll('[data-v]').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === state.variant));
+document.querySelectorAll('[data-r]').forEach(b => b.onclick = () => {
+  state.yRar = b.dataset.r; db.set('yRar', state.yRar); paintYgoRow(); if (cur && cur.game !== 'poke') renderCur(false);
+});
 $('#autoBtn').onclick = () => setAuto(!auto);
 $('#soundBtn').onclick = () => { state.sound = !state.sound; db.set('sound', state.sound); audio(); paintSound(); if (state.sound) dingNew(); };
 const paintSound = () => { $('#soundBtn').setAttribute('aria-pressed', state.sound); $('#soundBtn').textContent = state.sound ? 'Sound on' : 'Sound off'; };
@@ -1102,8 +1141,8 @@ $('#clearAdded').onclick = () => { state.added = {}; db.set('added', {}); showSt
 $('#clearAll').onclick = async () => { for (const k of ['poke', 'ygo', 'added']) await db.del(k); state.poke = state.ygo = null; state.added = {}; showStatus(); };
 
 (async () => {
-  const [poke, ygo, added, thr, fxv, sets, variant, sound, cam, yFolders, y3, batch] = await Promise.all(['poke', 'ygo', 'added', 'thr', 'fx', 'sets', 'variant', 'sound', 'cam', 'yFolders', 'y3', 'batch'].map(db.get));
-  Object.assign(state, { poke, ygo, added: added || {}, thr: thr ?? 1, fx: fxv, sets, variant: variant || 'any', sound: sound ?? true, cam, yFolders: yFolders || [], y3: !!y3, batch: batch || [] });
+  const [poke, ygo, added, thr, fxv, sets, variant, sound, cam, yFolders, y3, batch, yRar] = await Promise.all(['poke', 'ygo', 'added', 'thr', 'fx', 'sets', 'variant', 'sound', 'cam', 'yFolders', 'y3', 'batch', 'yRar'].map(db.get));
+  Object.assign(state, { poke, ygo, added: added || {}, thr: thr ?? 1, fx: fxv, sets, variant: variant || 'any', sound: sound ?? true, cam, yFolders: yFolders || [], y3: !!y3, batch: batch || [], yRar: yRar || 'any' });
   paintYgoRow();
   loadRec().catch(() => {});
   Tesseract.createWorker('eng').then(w => { worker = worker || w; }).catch(() => {});
