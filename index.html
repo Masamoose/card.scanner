@@ -98,6 +98,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 @media(max-width:600px){.controls{grid-template-columns:1fr 1fr}.controls .shoot,.controls select{grid-column:span 2}}
 .kbd{font:600 12px Inter,sans-serif;border:1px solid currentColor;border-radius:5px;padding:1px 5px;margin-left:6px;opacity:.7}
 .recstat{font-size:13px;color:var(--mute);margin:6px 0 0}
+.recstat a{color:var(--mute)}
 .result{margin-top:0}
 .res-top img{width:150px;border-radius:8px}
 .imgchoices{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-top:8px}
@@ -167,7 +168,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
     <button id="folderBtn" title="Choose which Dragon Shield folders to check against">Yu-Gi-Oh! folders: all</button>
     <button id="y3Btn" aria-pressed="false">Flag under 3 copies: off</button>
   </div>
-  <p class="recstat" id="recStat">Loading card recogniser…</p>
+  <p class="recstat"><span id="recStat">Loading card recogniser…</span> · <a href="#" id="snapBtn">Save what the scanner sees</a></p>
   <form class="manual" id="manual">
     <input id="manualIn" placeholder="Or type: LOB-EN001, 4/102, Charizard 4/102" autocomplete="off" autocapitalize="off">
     <button>Look up</button>
@@ -543,12 +544,47 @@ function loadRec() {
   })().catch(e => { rec.loading = null; $('#recStat').textContent = 'Card recogniser could not load – scanning will use text only. (' + e.message + ')'; throw e; }));
 }
 const EW = 224, EH = 320, ecv = document.createElement('canvas'); ecv.width = EW; ecv.height = EH;
-async function embed(c) {
-  const g = ecv.getContext('2d', { willReadFrequently: true }); g.drawImage(c, 0, 0, EW, EH);
-  const px = g.getImageData(0, 0, EW, EH).data, n = EW * EH, x = new Float32Array(3 * n);
-  for (let i = 0; i < n; i++) { x[i] = px[i * 4] / 255; x[n + i] = px[i * 4 + 1] / 255; x[2 * n + i] = px[i * 4 + 2] / 255; }
-  const out = await rec.sess.run({ x: new ort.Tensor('float32', x, [1, 3, EH, EW]) });
-  return out.v.data;
+async function embed(c) { return (await embedMany([c]))[0]; }
+async function embedMany(cs) {
+  const n = EW * EH, x = new Float32Array(cs.length * 3 * n), g = ecv.getContext('2d', { willReadFrequently: true });
+  cs.forEach((c, b) => {
+    g.drawImage(c, 0, 0, EW, EH);
+    const px = g.getImageData(0, 0, EW, EH).data, o = b * 3 * n;
+    for (let i = 0; i < n; i++) { x[o + i] = px[i * 4] / 255; x[o + n + i] = px[i * 4 + 1] / 255; x[o + 2 * n + i] = px[i * 4 + 2] / 255; }
+  });
+  const out = (await rec.sess.run({ x: new ort.Tensor('float32', x, [cs.length, 3, EH, EW]) })).v.data, D = out.length / cs.length;
+  return cs.map((_, b) => out.subarray(b * D, (b + 1) * D));
+}
+// Zooms and offsets tried inside the guide box, so a card that doesn't fill it is still found
+const ZOOMS = [{ z: 1, x: 0, y: 0 },
+  ...[[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]].map(([x, y]) => ({ z: .82, x, y })),
+  ...[[0, 0], [-1, -1], [1, -1], [-1, 1], [1, 1]].map(([x, y]) => ({ z: .66, x, y }))];
+function cropOf(c, k) {
+  const { z, x, y } = ZOOMS[k], cw = c.width * z, ch = c.height * z;
+  const cx = (c.width - cw) / 2 * (1 + x * .9), cy = (c.height - ch) / 2 * (1 + y * .9);
+  const o = document.createElement('canvas'); o.width = Math.round(cw); o.height = Math.round(ch);
+  o.getContext('2d').drawImage(c, cx, cy, cw, ch, 0, 0, o.width, o.height); return o;
+}
+function coarseBest(vecs, C = 64) {          // quick pass on the strongest 64 dimensions to pick the best crop
+  const D = rec.D, best = vecs.map(() => -1e9);
+  const scan = I => { for (let o = 0; o < I.length; o += D) for (let q = 0; q < vecs.length; q++) {
+    const v = vecs[q]; let s = 0; for (let d = 0; d < C; d++) s += v[d] * I[o + d]; if (s > best[q]) best[q] = s; } };
+  if (state.game !== 'ygo') scan(rec.ip);
+  if (state.game !== 'poke') scan(rec.iy);
+  return best.indexOf(Math.max(...best));
+}
+const isSure = top => { const b = top[0]; if (!b) return false; const o = top.find(t => ident(t) !== ident(b));
+  return b.s >= T.ok && b.s - (o ? o.s : 0) >= T.margin; };
+let lastK = 0;
+async function locate(c) {                  // -> { top, crop, k }
+  const quick = [...new Set([0, lastK])];
+  let vecs = await embedMany(quick.map(k => cropOf(c, k)));
+  let tops = vecs.map(v => search(v)), qi = tops.reduce((a, t, i) => t[0] && (!tops[a][0] || t[0].s > tops[a][0].s) ? i : a, 0);
+  if (isSure(tops[qi])) { lastK = quick[qi]; return { top: tops[qi], crop: cropOf(c, lastK), k: lastK }; }
+  vecs = await embedMany(ZOOMS.map((_, k) => cropOf(c, k)));
+  const k = coarseBest(vecs), top = search(vecs[k]);
+  const pick = top[0] && tops[qi][0] && tops[qi][0].s > top[0].s ? { top: tops[qi], k: quick[qi] } : { top, k };
+  lastK = pick.k; return { top: pick.top, crop: cropOf(c, pick.k), k: pick.k };
 }
 function search(v, k = 12) {
   const D = rec.D, top = [];
@@ -576,11 +612,12 @@ function pokeNumMatch(t, n) {
 }
 
 // Main recogniser: picture first, text to confirm when needed. Returns {id} when a card was shown.
-async function identify(c, { quiet = false, top = null } = {}) {
+async function identify(c, { quiet = false, top = null, crop = null } = {}) {
   if (!rec.ready) { if (quiet) return null; return textScan(c); }
-  top = top || search(await embed(c));
+  if (!top) { const L = await locate(c); top = L.top; crop = L.crop; }
+  const whole = c; c = crop || c;            // read text from the crop that best matched the card
   const best = top[0];
-  if (!best || best.s < T.none) { if (quiet) return null; return textScan(c); }
+  if (!best || best.s < T.none) { if (quiet) return null; return textScan(whole); }
   const other = top.find(t => ident(t) !== ident(best)), margin = best.s - (other ? other.s : 0);
   const sure = best.s >= T.ok && margin >= T.margin;
   if (best.g === 'p') {
@@ -597,19 +634,19 @@ async function identify(c, { quiet = false, top = null } = {}) {
     if (!card) { if (!quiet) showError('Recognised the card but could not fetch its details – check your internet connection.'); return null; }
     await showPoke(card, null); return { id: ident(pick) };
   }
-  // Yu-Gi-Oh!: the picture gives the card; the set code (text) gives the printing
-  if (!sure && quiet && best.s < T.ok) return null;
-  const m = rec.my.cards[best.i], codes = m[3].map(Core.normCode);
+  // Yu-Gi-Oh!: the picture gives the card; the set code (text) gives the printing – and settles unsure matches
   const text = await ocr(prep(c, .6, .85, 2)) + '\n' + (await ocr(prep(c, .5, 1, 1.5)));
-  const read = Core.ygoCodes(text).map(Core.normCode);
-  let code = read.find(k => codes.includes(k));
-  if (!code) {          // a code read imperfectly: match on the number part
-    const tail = read.map(k => k.split('-')[1]).filter(Boolean);
-    const hits = codes.filter(k => tail.some(t => k.endsWith('-' + t)));
-    if (hits.length === 1) code = hits[0];
+  const read = Core.ygoCodes(text).map(Core.normCode), tails = read.map(k => k.split('-')[1]).filter(Boolean);
+  let pickT = null, code = null;
+  for (const t of (sure ? [best] : top.filter(t => t.g === 'y').slice(0, 8))) {
+    const codes = rec.my.cards[t.i][3].map(Core.normCode);
+    let k = read.find(x => codes.includes(x));
+    if (!k) { const h = codes.filter(x => tails.some(tl => x.endsWith('-' + tl))); if (h.length === 1) k = h[0]; }
+    if (k) { pickT = t; code = k; break; }
   }
-  if (code) { const hit = await ygoLookup([code]); if (hit) { await showYgo(hit); return { id: ident(best) }; } }
-  await showYgoCard(m); return { id: ident(best) };
+  if (!pickT) { if (quiet && !sure) return null; pickT = best; }
+  if (code) { const hit = await ygoLookup([code]); if (hit) { await showYgo(hit); return { id: ident(pickT) }; } }
+  await showYgoCard(rec.my.cards[pickT.i]); return { id: ident(pickT) };
 }
 async function textScan(c) {           // the original text-only route
   let text = await ocr(prep(c)), found = detect(text);
@@ -900,25 +937,33 @@ function drawHist() {
 let auto = false, lastSig = null, lastSigAt = 0, frameNo = 0;
 const failed = {};
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-let lastBanner = 0;
+let lastBanner = 0, seenNow = null, pickedFor = null;
 const autoStat = t => { if (Date.now() - lastBanner > 5000) $('#autoStat').textContent = t; };
 async function autoLoop() {
-  let prev = null, steady = 0, empty = 0, lastShown = null;
+  let prev = null, steady = 0, empty = 0, lastShown = null, tryAt = 0, unsureSince = 0, offered = null;
   while (auto) {
     const v = $('#video');
     if (!stream || !v.videoWidth || document.hidden || manualBusy) { await sleep(300); continue; }
     try {
       if (!rec.ready) { autoStat('Auto-scan: waiting for the card recogniser…'); await loadRec().catch(() => sleep(3000)); continue; }
-      const c = grabVideo(), top = search(await embed(c)), b = top[0];
-      if (!b || b.s < T.none) { if (++empty >= 3) lastShown = null; prev = null; steady = 0; autoStat('Auto-scan: looking for a card…'); await sleep(120); continue; }
+      const c = grabVideo(), L = await locate(c), b = L.top[0];
+      if (!b || b.s < T.none) {
+        if (++empty >= 2) { lastShown = null; offered = null; }
+        prev = null; steady = 0; unsureSince = 0; autoStat('Auto-scan: looking for a card…'); await sleep(80); continue;
+      }
       empty = 0;
-      const id = ident(b);
-      if (id === lastShown) { autoStat('Auto-scan: same card – show the next one'); await sleep(150); continue; }
+      const id = ident(b), nm = (b.g === 'p' ? rec.mp.cards[b.i] : rec.my.cards[b.i])[1];
+      seenNow = id; if (pickedFor === id) { lastShown = id; pickedFor = null; }
+      if (id === lastShown) { autoStat('Auto-scan: done – show the next card'); await sleep(120); continue; }
       steady = id === prev ? steady + 1 : 1; prev = id;
-      if (steady < 2) { await sleep(60); continue; }        // wait until the card is still
-      autoStat('Auto-scan: checking…');
-      const res = await identify(c, { quiet: true, top });
-      lastShown = res ? res.id : id;
+      const hint = L.k >= 6 ? ' – move the card closer or centre it' : '';
+      autoStat(offered === id ? 'Auto-scan: not sure – click the right card on the right' : `Auto-scan: seeing ${nm} (${Math.round(b.s * 100)}%)${hint}`);
+      if (steady < 2 || Date.now() < tryAt) { await sleep(40); continue; }   // card still moving, or just tried
+      const res = await identify(c, { quiet: true, top: L.top, crop: L.crop });
+      if (res) { lastShown = res.id; unsureSince = 0; continue; }
+      // not confident yet: keep trying with fresh frames; after ~4s show the best guesses to click
+      tryAt = Date.now() + 700; unsureSince = unsureSince || Date.now();
+      if (Date.now() - unsureSince > 4000 && offered !== id) { offered = id; renderImgChoice(L.top); autoStat('Auto-scan: not sure – click the right card on the right'); }
     } catch (e) { console.warn(e); await sleep(500); }
   }
 }
@@ -975,7 +1020,7 @@ $('#result').onclick = async e => {
   if (p) { const c = window._cands[+p.dataset.pick]; await showPoke(c, window._n && window._n.local ? window._n : null); }
   const ci = e.target.closest('[data-code]'), im = e.target.closest('[data-img]');
   if (ci) { const hit = await ygoLookup([ci.dataset.code]); if (hit) await showYgo(hit); else showError('Could not find ' + ci.dataset.code + '.'); }
-  if (im) { const t = window._imgc[+im.dataset.img];
+  if (im) { const t = window._imgc[+im.dataset.img]; pickedFor = seenNow;
     if (t.g === 'p') { const card = await getJSON('https://api.tcgdex.net/v2/en/cards/' + encodeURIComponent(rec.mp.cards[t.i][0])).catch(() => null); if (card) await showPoke(card, null); }
     else await showYgoCard(rec.my.cards[t.i]); }
   if (s && cur) { cur.sel = cur.sel === s.dataset.sel ? null : s.dataset.sel; renderCur(false); }
@@ -1015,6 +1060,11 @@ $('#fNone').onclick = () => { state.yFolders = []; drawFolders(); };
 $('#fDone').onclick = () => $('#folders').close();
 $('#folders').onclose = () => { db.set('yFolders', state.yFolders); paintYgoRow(); showStatus(); if (cur) renderCur(false); };
 $('#y3Btn').onclick = () => { state.y3 = !state.y3; db.set('y3', state.y3); paintYgoRow(); showStatus(); if (cur) renderCur(false); };
+$('#snapBtn').onclick = e => {
+  e.preventDefault(); const v = $('#video'); if (!stream || !v.videoWidth) return;
+  const c = grabVideo(), a = document.createElement('a');
+  c.toBlob(bl => { a.href = URL.createObjectURL(bl); a.download = 'scanner-view-' + Date.now() + '.png'; document.body.append(a); a.click(); a.remove(); }, 'image/png');
+};
 $('#camSel').onchange = () => { state.cam = $('#camSel').value; db.set('cam', state.cam); if (stream) startCam(); };
 document.addEventListener('keydown', e => {
   if (e.target.closest('input,select,textarea,dialog') || e.ctrlKey || e.metaKey || e.altKey) return;
