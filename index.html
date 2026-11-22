@@ -103,6 +103,16 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 .imgchoices{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-top:8px}
 .imgchoices button{padding:6px;height:auto;display:grid;gap:4px;text-align:left;font-size:13px}
 .imgchoices img{width:100%;border-radius:6px}
+.ygorow{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:8px;margin-top:8px}
+.ygorow button{font-size:15px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ygorow button[aria-pressed=true]{border-color:var(--gold);color:var(--gold);font-weight:600}
+.t-need{background:transparent;color:var(--new);border:1px solid var(--new)}
+.t-count{background:var(--line);color:var(--ink)}
+.flist{max-height:50vh;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:4px 10px;margin-top:8px}
+.flist label{display:flex;gap:10px;align-items:center;min-height:38px;border-bottom:1px solid var(--line);cursor:pointer}
+.flist label:last-child{border:0}.flist span{flex:1}.flist small{color:var(--mute)}
+.flist input{width:18px;height:18px}
+#fFilter{width:100%;min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--bg);padding:0 12px;font-size:16px;margin-top:8px}
 .printings{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .printings button{min-height:36px;font-size:13px;padding:0 10px}
 .printings button.mine{border-color:var(--own);color:var(--own)}
@@ -146,6 +156,10 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
       <input id="photo" type="file" accept="image/*" hidden></label>
     <button id="openSet2">Collections</button>
   </div>
+  <div class="ygorow" id="ygoRow">
+    <button id="folderBtn" title="Choose which Dragon Shield folders to check against">Yu-Gi-Oh! folders: all</button>
+    <button id="y3Btn" aria-pressed="false">Flag under 3 copies: off</button>
+  </div>
   <p class="recstat" id="recStat">Loading card recogniser…</p>
   <form class="manual" id="manual">
     <input id="manualIn" placeholder="Or type: LOB-EN001, 4/102, Charizard 4/102" autocomplete="off" autocapitalize="off">
@@ -174,6 +188,15 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
     <span id="addedCount" class="note"></span>
     <div class="row"><button id="clearAdded">Clear added list</button><button id="clearAll">Remove all data</button></div></div>
   <div class="row"><button id="closeSet" class="shoot" style="min-height:48px;font-size:16px">Done</button></div>
+</dialog>
+
+<dialog id="folders">
+  <h2>Yu-Gi-Oh! folders to check</h2>
+  <p class="note">The scanner counts copies only in the folders you tick. Tick none to use every folder.</p>
+  <input id="fFilter" placeholder="Filter folders, e.g. Folder -" autocomplete="off">
+  <div class="row"><button id="fAll">Tick shown</button><button id="fNone">Clear all</button></div>
+  <div class="flist" id="flist"></div>
+  <div class="row"><button id="fDone" class="shoot" style="min-height:48px;font-size:16px">Done</button></div>
 </dialog>
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
@@ -213,19 +236,24 @@ const Core = (() => {
     const H = rows[h], col = k => H.indexOf(k);
     const iN = col('Card Name'), iC = col('Card Number'), iQ = col('Quantity'), iF = col('Folder Name'),
       iP = col('Printing'), iR = col('Rarity'), iM = col('MARKET'), iS = col('Set Name');
-    const codes = {}, names = {}; let total = 0;
+    const codes = {}, names = {}, folders = {}, byFolder = {}; let total = 0;
     for (const r of rows.slice(h + 1)) {
       if (!r[iC] || !r[iN]) continue;
       const code = normCode(r[iC]), q = +r[iQ] || 1; total += q;
-      const e = codes[code] || (codes[code] = { n: r[iN], s: r[iS] || '', q: 0, f: [], p: [], r: r[iR] || '', rs: {}, m: 0 });
+      const e = codes[code] || (codes[code] = { n: r[iN], s: r[iS] || '', q: 0, f: [], p: [], r: r[iR] || '', rs: {}, fq: {}, frs: {}, m: 0 });
       e.q += q;
       if (r[iR]) e.rs[r[iR]] = (e.rs[r[iR]] || 0) + q;
+      const fo = r[iF] || '(no folder)';
+      e.fq[fo] = (e.fq[fo] || 0) + q;
+      if (r[iR]) { const fr = e.frs[fo] || (e.frs[fo] = {}); fr[r[iR]] = (fr[r[iR]] || 0) + q; }
+      folders[fo] = (folders[fo] || 0) + q;
+      const nf = byFolder[fo] || (byFolder[fo] = {}), nk = normName(r[iN]); nf[nk] = (nf[nk] || 0) + q;
       if (r[iF] && !e.f.includes(r[iF])) e.f.push(r[iF]);
       if (r[iP] && !e.p.includes(r[iP])) e.p.push(r[iP]);
       e.m = Math.max(e.m, parseFloat(r[iM]) || 0);
       const k = normName(r[iN]); names[k] = (names[k] || 0) + q;
     }
-    return { v: 2, codes, names, total, unique: Object.keys(codes).length, at: Date.now() };
+    return { v: 3, codes, names, folders, nf: byFolder, total, unique: Object.keys(codes).length, at: Date.now() };
   }
 
   // Poke Card Values xlsx -> rows (array of arrays from SheetJS)
@@ -349,7 +377,7 @@ if (typeof module !== 'undefined') module.exports = Core;
 {
 const $ = s => document.querySelector(s);
 const FALLBACK = { USD: 0.76, EUR: 0.84 };
-let state = { game: 'auto', variant: 'any', sound: true, thr: 1, poke: null, ygo: null, added: {}, fx: null, sets: null, hist: [] };
+let state = { game: 'auto', variant: 'any', sound: true, yFolders: [], y3: false, thr: 1, poke: null, ygo: null, added: {}, fx: null, sets: null, hist: [] };
 
 /* ---------- storage (IndexedDB, with graceful failure) ---------- */
 const db = (() => {
@@ -386,11 +414,43 @@ function showStatus() {
   const p = state.poke, y = state.ygo, bits = [];
   if (p) bits.push(`Pokémon: ${p.unique.toLocaleString()} cards`);
   if (y) bits.push(`Yu-Gi-Oh!: ${y.unique.toLocaleString()} printings`);
-  $('#collStatus').textContent = bits.length ? bits.join(' · ') + ` · flag ≥ £${state.thr}` :
+  if (y && yFs()) bits.push(`checking ${yFs().length === 1 ? yFs()[0] : yFs().length + ' folders'}`);
+  $('#collStatus').textContent = bits.length ? bits.join(' · ') + ` · flag ≥ £${state.thr}` + (state.y3 ? ' · flag Yu-Gi-Oh! under 3 copies' : '') :
     'No collections loaded yet. Click Collections to load your exports.';
   $('#sPoke').textContent = p ? `Loaded ${p.unique.toLocaleString()} rows (${new Date(p.at).toLocaleDateString('en-GB')})` : '';
   $('#sYgo').textContent = y ? `Loaded ${y.unique.toLocaleString()} printings (${new Date(y.at).toLocaleDateString('en-GB')})` : '';
   $('#addedCount').textContent = `${Object.keys(state.added).length} card(s).`;
+}
+
+/* ---------- Yu-Gi-Oh! folders and copy counts ---------- */
+const yFs = () => { const y = state.ygo; return y && y.nf && state.yFolders.length ? state.yFolders.filter(f => y.folders[f]) : null; };
+function yCode(code, rar) {          // copies of this printing (and rarity) in the chosen folders
+  const e = state.ygo && state.ygo.codes[code]; if (!e) return 0;
+  const fs = yFs(), hasR = rar && e.rs && Object.keys(e.rs).length;
+  if (!fs) return hasR ? (e.rs[rar] || 0) : e.q;
+  return fs.reduce((a, f) => a + (hasR ? ((e.frs[f] || {})[rar] || 0) : (e.fq[f] || 0)), 0);
+}
+function yName(name) {               // copies of this card in any printing, in the chosen folders
+  const y = state.ygo; if (!y) return 0; const k = Core.normName(name), fs = yFs();
+  return fs ? fs.reduce((a, f) => a + ((y.nf[f] || {})[k] || 0), 0) : (y.names[k] || 0);
+}
+function yWhere(code) {              // which folders hold this printing
+  const e = state.ygo && state.ygo.codes[code]; if (!e || !e.fq) return '';
+  const fs = yFs();
+  return Object.entries(e.fq).sort((a, b) => b[1] - a[1]).map(([f, q]) => `${f} ×${q}${fs && !fs.includes(f) ? ' (not checked)' : ''}`).join(', ');
+}
+const copies = n => n + (n === 1 ? ' copy' : ' copies');
+function paintYgoRow() {
+  const fs = yFs();
+  $('#folderBtn').textContent = 'Yu-Gi-Oh! folders: ' + (!fs ? 'all' : fs.length === 1 ? fs[0] : fs[0] + ' +' + (fs.length - 1));
+  $('#y3Btn').setAttribute('aria-pressed', state.y3); $('#y3Btn').textContent = 'Flag under 3 copies: ' + (state.y3 ? 'on' : 'off');
+  $('#ygoRow').hidden = state.game === 'poke';
+}
+function drawFolders() {
+  const y = state.ygo, q = $('#fFilter').value.trim().toLowerCase();
+  if (!y || !y.folders) { $('#flist').innerHTML = '<p class="note">Load your Dragon Shield file in Collections first.</p>'; return; }
+  const list = Object.entries(y.folders).sort((a, b) => a[0].localeCompare(b[0])).filter(([f]) => !q || f.toLowerCase().includes(q));
+  $('#flist').innerHTML = list.map(([f, n]) => `<label><input type="checkbox" value="${esc(f)}" ${state.yFolders.includes(f) ? 'checked' : ''}><span>${esc(f)}</span><small>${n.toLocaleString()} cards</small></label>`).join('');
 }
 
 /* ---------- webcam ---------- */
@@ -636,7 +696,7 @@ function tone(freqs, gap, dur, vol = .35) {
 }
 const dingNew = () => { tone([1318], 0, .9); try { navigator.vibrate && navigator.vibrate(120); } catch {} };
 const dingGold = () => { tone([988, 1319, 1976], .11, .7); try { navigator.vibrate && navigator.vibrate([90, 60, 90, 60, 160]); } catch {} };
-function alertFor(v) { if (v.best >= state.thr) dingGold(); else if (!v.owned) dingNew(); }
+function alertFor(v) { if (v.best >= state.thr) dingGold(); else if (!v.owned || v.need) dingNew(); }
 
 /* ---------- current result, re-rendered when a type/rarity chip is tapped ---------- */
 let cur = null;
@@ -646,24 +706,25 @@ function ygoView(c) {
   const { hit, det } = c, own = hit.owned, opts = det.rar;
   const sel = c.sel || (opts.length === 1 ? opts[0].code : null);
   const name = hit.info ? hit.info.name : own.n, key = 'Y:' + hit.code;
-  let qty = 0;
-  if (own) qty = sel && own.rs && Object.keys(own.rs).length ? (own.rs[sel] || 0) : own.q;
+  let qty = yCode(hit.code, sel);
   if (!qty && isAdded(key, sel)) qty = 1;
+  const nameQty = Math.max(yName(name), qty), ps = playset(nameQty);
+  const extra = [...(nameQty > qty ? [`<span class="tag t-count">${copies(nameQty)} of this card in all printings</span>`] : []), ...ps.tag];
   const rows = opts.filter(o => o.gbp != null).map(o => ({ k: o.name + ' (TCGplayer)', v: o.gbp, cls: sel ? (o.code === sel ? 'sel' : 'dim') : '' }));
   let best = sel ? ((opts.find(o => o.code === sel) || {}).gbp || 0) : Math.max(0, ...opts.map(o => o.gbp || 0));
   if (!rows.length || (sel && !best)) { det.cheap.forEach(([k, v]) => rows.push({ k, v, cls: '' })); if (!best) best = Math.max(0, ...det.cheap.map(x => x[1])); }
   const ownRar = own && own.rs ? Object.entries(own.rs).map(([r, q]) => r + (q > 1 ? ' ×' + q : '')).join(', ') : '';
-  const otherPrint = !own && state.ygo && state.ygo.names[Core.normName(name)];
+  const otherPrint = !qty && nameQty;
   const html = `<div class="res-top">${det.img ? `<img src="https://images.ygoprodeck.com/images/cards_small/${det.img}.jpg" alt="">` : ''}<div><h2>${esc(name)}</h2>
     <div class="sub">${esc(hit.code)} · ${esc(hit.info ? hit.info.set_name : own.s)}${sel ? ' · ' + esc((opts.find(o => o.code === sel) || {}).name || sel) : ''}</div></div></div>
     ${opts.length > 1 ? `<div class="chiplab">${sel ? 'Rarity' : 'Which rarity is it? This code was printed in ' + opts.length}</div>
       <div class="chips">${opts.map(o => `<button data-sel="${esc(o.code)}" aria-pressed="${o.code === sel}">${esc(o.name)}</button>`).join('')}</div>` : ''}
-    ${verdictHtml(qty, best, !rows.length, !sel && opts.length > 1)}
+    ${verdictHtml(qty, best, !rows.length, !sel && opts.length > 1, extra)}
     ${priceTable(rows)}
-    ${own ? `<p class="note">You have ${esc(ownRar || own.q)} · in ${esc(own.f.slice(0, 3).join(', '))}${own.f.length > 3 ? '…' : ''} (${esc(own.p.join(', '))}). Dragon Shield value: ${own.m.toFixed(2)}</p>` : ''}
-    ${otherPrint ? `<p class="note">You have ${otherPrint} of this card from other sets, but not this printing.</p>` : ''}
+    ${own ? `<p class="note">${yFs() ? 'Across all your folders, this printing' : 'This printing'}: ${esc(ownRar || own.q)} (${esc(own.p.join(', '))}) · in ${esc(yWhere(hit.code))}. Dragon Shield value: ${own.m.toFixed(2)}</p>` : ''}
+    ${otherPrint ? `<p class="note">You have ${copies(otherPrint)} of this card from other sets${yFs() ? ' in the checked folders' : ''}, but not this printing.</p>` : ''}
     ${!qty ? addBtn(key, sel) : ''}`;
-  return { html, key, name, code: hit.code + (sel ? ' ' + sel : ''), owned: qty, best };
+  return { html, key, name, code: hit.code + (sel ? ' ' + sel : ''), owned: qty, best, need: ps.need, have: nameQty };
 }
 
 function pokeView(c) {
@@ -686,7 +747,7 @@ function pokeView(c) {
     ${priceTable(rows)}
     ${all.length ? `<p class="note">You have: ${esc(all.map(x => `${x.h}${x.q > 1 ? ' ×' + x.q : ''} (${gbp(x.v)})`).join(', '))}</p>` : ''}
     ${!qty ? addBtn(key, sel) : ''}`;
-  return { html, key, name: card.name, code: num + (sel ? ' ' + sel : ''), owned: qty, best };
+  return { html, key, name: card.name, code: num + (sel ? ' ' + sel : ''), owned: qty, best, have: qty };
 }
 
 async function showYgoCard(m) {
@@ -698,8 +759,8 @@ async function showYgoCard(m) {
 function ygoCardView(c) {
   const { m, d } = c, name = m[1], y = state.ygo, key = 'YC:' + m[2];
   const codes = [...new Set(m[3].map(Core.normCode))];
-  const mine = y ? codes.filter(k => y.codes[k]) : [];
-  const qty = (y && y.names[Core.normName(name)]) || (isAdded(key) ? 1 : 0);
+  const mine = y ? codes.filter(k => yCode(k) > 0) : [];
+  const qty = yName(name) || (isAdded(key) ? 1 : 0), ps = playset(qty);
   const r = state.fx || FALLBACK, rows = [];
   let best = 0, top = 0;
   if (d) {
@@ -713,13 +774,18 @@ function ygoCardView(c) {
   const list = [...mine, ...codes.filter(k => !mine.includes(k))].slice(0, 40);
   const html = `<div class="res-top"><img src="https://images.ygoprodeck.com/images/cards_small/${m[0]}.jpg" alt=""><div><h2>${esc(name)}</h2>
     <div class="sub">Printing not confirmed · ${codes.length} printing${codes.length === 1 ? '' : 's'}</div></div></div>
-    ${verdictHtml(qty, best, !rows.length, false).replace('In collection', 'You own this card').replace('NEW – not in collection', 'NEW – you have no copies')}
+    ${verdictHtml(qty, best, !rows.length, false, ps.tag).replace('In collection', 'You own this card').replace('NEW – not in collection', 'NEW – you have no copies')}
+    ${mine.length ? `<p class="note">Your copies: ${esc(mine.map(k => `${k} ×${yCode(k)}`).join(', '))}</p>` : ''}
     ${priceTable(rows)}
     ${top >= state.thr && best < state.thr ? `<p class="note">Some printings are worth ${gbp(top)} – pick yours below to check.</p>` : ''}
     <div class="chiplab">Couldn't read the set code. Which printing is it?${mine.length ? ' Yours are marked.' : ''}</div>
-    <div class="printings">${list.map(k => `<button data-code="${esc(k)}" class="${mine.includes(k) ? 'mine' : ''}">${esc(k)}${mine.includes(k) ? ' ✓' : ''}</button>`).join('')}</div>
+    <div class="printings">${list.map(k => `<button data-code="${esc(k)}" class="${mine.includes(k) ? 'mine' : ''}">${esc(k)}${mine.includes(k) ? ' ✓' + yCode(k) : ''}</button>`).join('')}</div>
     ${!qty ? addBtn(key, null) : ''}`;
-  return { html, key, name, code: 'printing ?', owned: qty, best };
+  return { html, key, name, code: 'printing ?', owned: qty, best, need: ps.need, have: qty };
+}
+function playset(n) {     // Yu-Gi-Oh!: flag when fewer than 3 copies of the card
+  if (!state.y3 || n >= 3) return { need: 0, tag: [] };
+  return { need: 3 - n, tag: [`<span class="tag t-need">Only ${n} of 3 – need ${3 - n} more</span>`] };
 }
 function renderImgChoice(top) {
   const seen = new Set(), list = top.filter(t => { const id = ident(t); if (seen.has(id)) return false; seen.add(id); return true; }).slice(0, 6);
@@ -732,9 +798,9 @@ function renderImgChoice(top) {
 function renderCur(fresh) {
   const v = cur.game === 'ygo' ? ygoView(cur) : cur.game === 'ygocard' ? ygoCardView(cur) : pokeView(cur);
   show(v.html, fresh);
-  log({ key: v.key, name: v.name, code: v.code, isNew: !v.owned, best: v.best });
+  log({ key: v.key, name: v.name, code: v.code, isNew: !v.owned, best: v.best, need: v.need || 0, have: v.have || 0 });
   if (fresh) alertFor(v);
-  if (fresh && auto) { lastBanner = Date.now(); $('#autoStat').innerHTML = `${esc(v.name)}${v.owned ? '<span class="tag t-own">owned</span>' : '<span class="tag t-new">NEW</span>'}${v.best >= state.thr ? `<span class="tag t-gold">${gbp(v.best)}</span>` : ''}`; }
+  if (fresh && auto) { lastBanner = Date.now(); $('#autoStat').innerHTML = `${esc(v.name)}${v.owned ? `<span class="tag t-own">have ${v.have || v.owned}</span>` : '<span class="tag t-new">NEW</span>'}${v.need ? `<span class="tag t-need">${3 - v.need}/3</span>` : ''}${v.best >= state.thr ? `<span class="tag t-gold">${gbp(v.best)}</span>` : ''}`; }
   return v;
 }
 async function showYgo(hit) { await fx(); cur = { game: 'ygo', hit, det: await ygoDetails(hit), sel: null }; return renderCur(true); }
@@ -773,9 +839,10 @@ async function resolve(found, text, quiet) {
   return null;
 }
 
-function verdictHtml(owned, best, unknownPrice, unsure) {
+function verdictHtml(owned, best, unknownPrice, unsure, extra = []) {
   const t = [];
-  t.push(owned ? `<span class="tag t-own">In collection${owned > 1 ? ' ×' + owned : ''}</span>` : '<span class="tag t-new">NEW – not in collection</span>');
+  t.push(owned ? `<span class="tag t-own">In collection · ${copies(owned)}</span>` : '<span class="tag t-new">NEW – not in collection</span>');
+  t.push(...extra);
   if (best >= state.thr) t.push(`<span class="tag t-gold">${unsure ? 'Up to ' : 'Worth '}${gbp(best)} – over £${state.thr}</span>`);
   else if (unknownPrice) t.push('<span class="tag t-warn">No price found</span>');
   return `<div class="tags">${t.join('')}</div>`;
@@ -803,9 +870,9 @@ function log(e) {
 }
 function drawHist() {
   const only = $('#onlyFlag').checked;
-  const list = state.hist.filter(h => !only || h.isNew || h.best >= state.thr);
+  const list = state.hist.filter(h => !only || h.isNew || h.need || h.best >= state.thr);
   $('#hist').innerHTML = list.map(h => `<li><span class="nm">${esc(h.name)} <span class="sub">${esc(h.code)}</span></span>
-    ${h.isNew ? '<span class="tag t-new">NEW</span>' : '<span class="tag t-own">owned</span>'}${h.best >= state.thr ? `<span class="tag t-gold">${gbp(h.best)}</span>` : ''}</li>`).join('');
+    ${h.isNew ? '<span class="tag t-new">NEW</span>' : `<span class="tag t-own">have ${h.have || 1}</span>`}${h.need ? `<span class="tag t-need">${3 - h.need}/3</span>` : ''}${h.best >= state.thr ? `<span class="tag t-gold">${gbp(h.best)}</span>` : ''}</li>`).join('');
   $('#histEmpty').hidden = list.length > 0;
 }
 
@@ -847,7 +914,7 @@ let manualBusy = false;
 /* ---------- events ---------- */
 document.querySelectorAll('[data-g]').forEach(b => b.onclick = () => {
   state.game = b.dataset.g; document.querySelectorAll('[data-g]').forEach(x => x.setAttribute('aria-pressed', x === b));
-  $('#varSeg').hidden = state.game === 'ygo';
+  $('#varSeg').hidden = state.game === 'ygo'; paintYgoRow();
 });
 document.querySelectorAll('[data-v]').forEach(b => b.onclick = () => {
   state.variant = b.dataset.v; db.set('variant', state.variant); paintVar();
@@ -899,6 +966,15 @@ $('#onlyFlag').onchange = drawHist;
 
 
 $('#openSet').onclick = $('#openSet2').onclick = () => $('#settings').showModal();
+$('#folderBtn').onclick = () => { $('#fFilter').value = ''; drawFolders(); $('#folders').showModal(); };
+$('#fFilter').oninput = drawFolders;
+$('#flist').onchange = e => { const f = e.target.value; if (!f) return;
+  state.yFolders = e.target.checked ? [...new Set([...state.yFolders, f])] : state.yFolders.filter(x => x !== f); };
+$('#fAll').onclick = () => { document.querySelectorAll('#flist input').forEach(i => { i.checked = true; }); state.yFolders = [...new Set([...state.yFolders, ...[...document.querySelectorAll('#flist input')].map(i => i.value)])]; };
+$('#fNone').onclick = () => { state.yFolders = []; drawFolders(); };
+$('#fDone').onclick = () => $('#folders').close();
+$('#folders').onclose = () => { db.set('yFolders', state.yFolders); paintYgoRow(); showStatus(); if (cur) renderCur(false); };
+$('#y3Btn').onclick = () => { state.y3 = !state.y3; db.set('y3', state.y3); paintYgoRow(); showStatus(); if (cur) renderCur(false); };
 $('#camSel').onchange = () => { state.cam = $('#camSel').value; db.set('cam', state.cam); if (stream) startCam(); };
 document.addEventListener('keydown', e => {
   if (e.target.closest('input,select,textarea,dialog') || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -909,7 +985,7 @@ $('#closeSet').onclick = () => $('#settings').close();
 $('#thr').onchange = e => { state.thr = Math.max(0, +e.target.value || 0); db.set('thr', state.thr); showStatus(); drawHist(); };
 $('#fYgo').onchange = async e => {
   const f = e.target.files[0]; if (!f) return; $('#sYgo').textContent = 'Reading…';
-  try { state.ygo = Core.parseYgo(await f.text()); await db.set('ygo', state.ygo); clearAddedFor('Y:'); showStatus(); }
+  try { state.ygo = Core.parseYgo(await f.text()); await db.set('ygo', state.ygo); clearAddedFor('Y:'); clearAddedFor('YC:'); paintYgoRow(); showStatus(); }
   catch (err) { $('#sYgo').innerHTML = `<span class="err">${esc(err.message)}</span>`; }
 };
 let xlsxLoaded = null;
@@ -927,13 +1003,14 @@ $('#clearAdded').onclick = () => { state.added = {}; db.set('added', {}); showSt
 $('#clearAll').onclick = async () => { for (const k of ['poke', 'ygo', 'added']) await db.del(k); state.poke = state.ygo = null; state.added = {}; showStatus(); };
 
 (async () => {
-  const [poke, ygo, added, thr, fxv, sets, variant, sound, cam] = await Promise.all(['poke', 'ygo', 'added', 'thr', 'fx', 'sets', 'variant', 'sound', 'cam'].map(db.get));
-  Object.assign(state, { poke, ygo, added: added || {}, thr: thr ?? 1, fx: fxv, sets, variant: variant || 'any', sound: sound ?? true, cam });
+  const [poke, ygo, added, thr, fxv, sets, variant, sound, cam, yFolders, y3] = await Promise.all(['poke', 'ygo', 'added', 'thr', 'fx', 'sets', 'variant', 'sound', 'cam', 'yFolders', 'y3'].map(db.get));
+  Object.assign(state, { poke, ygo, added: added || {}, thr: thr ?? 1, fx: fxv, sets, variant: variant || 'any', sound: sound ?? true, cam, yFolders: yFolders || [], y3: !!y3 });
+  paintYgoRow();
   loadRec().catch(() => {});
   Tesseract.createWorker('eng').then(w => { worker = worker || w; }).catch(() => {});
   listCams();
   $('#thr').value = state.thr; showStatus(); drawHist(); paintVar(); paintSound();
-  if (ygo && ygo.v !== 2) $('#collStatus').textContent += ' · Re-load your Dragon Shield file to enable rarity matching.';
+  if (ygo && ygo.v !== 3) $('#collStatus').textContent += ' · Re-load your Dragon Shield file to enable folders and rarities.';
   if (!poke && !ygo) $('#settings').showModal();
 })();
 }
