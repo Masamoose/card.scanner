@@ -778,23 +778,32 @@ function ygoView(c) {
 }
 
 function pokeView(c) {
-  const { card, n } = c, opts = Core.pokeVariants(card);
-  const pref = state.variant !== 'any' && opts.includes(state.variant) ? state.variant : null;
-  const sel = c.sel || pref || (opts.length === 1 ? opts[0] : null);
+  const { card, n } = c, listed = Core.pokeVariants(card);
   const numKey = n && n.total ? n.key : Core.normNum(card.localId + '/' + card.set.cardCount.official);
   const all = Core.pokeOwned(state.poke, numKey, card.name), key = 'P:' + numKey + ':' + Core.normName(card.name);
+  // your chosen type always wins; also offer any type you already own (the database's list isn't always complete)
+  const pref = state.variant !== 'any' ? state.variant : null;
+  const opts = ['Non-Holo', 'Holo', 'Reverse Holo'].filter(v => listed.includes(v) || all.some(r => r.h === v) || v === pref || v === c.sel);
+  const sel = c.sel || pref || (opts.length === 1 ? opts[0] : null);
   const mine = sel ? all.filter(r => r.h === sel) : all;
   const qty = mine.reduce((a, r) => a + r.q, 0) || (isAdded(key, sel) ? 1 : 0);
   const r = state.fx || FALLBACK;
   const rows = Core.pokePriceRows(card).map(([v, src, p, cur]) => ({ v: p * r[cur], k: `${v} · ${src}`, cls: sel ? (v === sel ? 'sel' : 'dim') : '', vr: v }));
-  const pool = sel ? rows.filter(x => x.vr === sel) : rows, best = Math.max(0, ...pool.map(x => x.v));
+  let pool = sel ? rows.filter(x => x.vr === sel) : rows, priceNote = '';
+  if (sel && !pool.length && rows.length) {      // no separate price for this type: use the card's own listing
+    pool = sel === 'Reverse Holo' ? rows : rows.filter(x => x.vr !== 'Reverse Holo');
+    if (!pool.length) pool = rows;
+    pool.forEach(x => { x.cls = 'sel'; });
+    priceNote = `<p class="note">No separate ${esc(sel)} price is listed for this card, so this uses its listed price.</p>`;
+  }
+  const best = Math.max(0, ...pool.map(x => x.v));
   const num = `${card.localId}/${card.set.cardCount.official}`;
   const html = `<div class="res-top"><img src="${esc(card.image)}/low.webp" alt=""><div><h2>${esc(card.name)}</h2>
     <div class="sub">${esc(num)} · ${esc(card.set.name)}${card.rarity ? ' · ' + esc(card.rarity) : ''}</div></div></div>
     ${opts.length > 1 ? `<div class="chiplab">${sel ? 'Type' : 'Which type is it?'}</div>
       <div class="chips">${opts.map(o => `<button data-sel="${esc(o)}" aria-pressed="${o === sel}">${esc(o)}</button>`).join('')}</div>` : ''}
     ${verdictHtml(qty, best, !pool.length, !sel && opts.length > 1)}
-    ${priceTable(rows)}
+    ${priceTable(rows)}${priceNote}
     ${all.length ? `<p class="note">You have: ${esc(all.map(x => `${x.h}${x.q > 1 ? ' ×' + x.q : ''} (${gbp(x.v)})`).join(', '))}</p>` : ''}
     ${!qty ? addBtn(key, sel) : ''}`;
   return { html, key, name: card.name, code: num + (sel ? ' ' + sel : ''), owned: qty, best, have: qty };
