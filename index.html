@@ -113,6 +113,13 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 .flist label:last-child{border:0}.flist span{flex:1}.flist small{color:var(--mute)}
 .flist input{width:18px;height:18px}
 #fFilter{width:100%;min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--bg);padding:0 12px;font-size:16px;margin-top:8px}
+.batchbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-bottom:12px}
+.batchbar .cnt{flex:1;min-width:200px}
+.batchbar .cnt b{font:700 28px Rubik,sans-serif;margin-right:6px}
+.batchbar button{min-height:40px;font-size:14px;padding:0 12px}
+.pos{font:700 15px Rubik,sans-serif;min-width:3.2em;color:var(--mute);font-variant-numeric:tabular-nums}
+.hist li.flag .pos{color:var(--gold)}
+.posbadge{font:700 13px Rubik,sans-serif;color:var(--bg);background:var(--mute);border-radius:6px;padding:2px 7px;margin-right:8px;vertical-align:3px}
 .printings{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .printings button{min-height:36px;font-size:13px;padding:0 10px}
 .printings button.mine{border-color:var(--own);color:var(--own)}
@@ -142,7 +149,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
   <div class="cam" id="cam">
     <video id="video" playsinline muted></video>
     <img id="still" alt="" hidden>
-    <div class="camoff" id="camOff">Click <b>&nbsp;Start webcam&nbsp;</b> to begin.</div>
+    <div class="camoff" id="camOff"><span>Click <b>Start webcam</b> to begin.</span></div>
     <div class="guide" id="guide"><span>Fit the card to this box</span></div>
     <div class="busy" id="busy">Reading card…</div>
     <div class="autostat" id="autoStat">Auto-scan: looking for a card…</div>
@@ -167,10 +174,16 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
   </form>
   </div>
   <div class="side">
+  <div class="batchbar">
+    <div class="cnt"><b id="bCount">0</b><span id="bInfo">cards in this batch</span></div>
+    <button id="bUndo">Undo last</button>
+    <button id="bCopy">Copy flagged</button>
+    <button id="bReset">Reset batch</button>
+  </div>
   <section class="result" id="result" aria-live="polite"></section>
-  <h3>This session <label><input type="checkbox" id="onlyFlag"> flagged only</label></h3>
+  <h3>This batch <label><input type="checkbox" id="onlyFlag"> flagged only</label></h3>
   <ul class="hist" id="hist"></ul>
-  <p class="empty" id="histEmpty">Scanned cards will appear here.</p>
+  <p class="empty" id="histEmpty">Every card you scan gets a number. Flagged ones show in gold, so you know where to pull from the pile.</p>
   </div>
   </div>
 </div>
@@ -377,7 +390,7 @@ if (typeof module !== 'undefined') module.exports = Core;
 {
 const $ = s => document.querySelector(s);
 const FALLBACK = { USD: 0.76, EUR: 0.84 };
-let state = { game: 'auto', variant: 'any', sound: true, yFolders: [], y3: false, thr: 1, poke: null, ygo: null, added: {}, fx: null, sets: null, hist: [] };
+let state = { game: 'auto', variant: 'any', sound: true, yFolders: [], y3: false, thr: 1, poke: null, ygo: null, added: {}, fx: null, sets: null, batch: [] };
 
 /* ---------- storage (IndexedDB, with graceful failure) ---------- */
 const db = (() => {
@@ -798,9 +811,13 @@ function renderImgChoice(top) {
 function renderCur(fresh) {
   const v = cur.game === 'ygo' ? ygoView(cur) : cur.game === 'ygocard' ? ygoCardView(cur) : pokeView(cur);
   show(v.html, fresh);
-  log({ key: v.key, name: v.name, code: v.code, isNew: !v.owned, best: v.best, need: v.need || 0, have: v.have || 0 });
+  const e = { key: v.key, name: v.name, code: v.code, isNew: !v.owned, best: v.best, need: v.need || 0, have: v.have || 0 };
+  if (fresh) { state.batch.push(e); cur.pos = state.batch.length; }
+  else if (cur.pos && state.batch[cur.pos - 1]) state.batch[cur.pos - 1] = e;
+  if (cur.pos) $('#result h2').insertAdjacentHTML('afterbegin', `<span class="posbadge">#${cur.pos}</span>`);
+  saveBatch(); drawHist();
   if (fresh) alertFor(v);
-  if (fresh && auto) { lastBanner = Date.now(); $('#autoStat').innerHTML = `${esc(v.name)}${v.owned ? `<span class="tag t-own">have ${v.have || v.owned}</span>` : '<span class="tag t-new">NEW</span>'}${v.need ? `<span class="tag t-need">${3 - v.need}/3</span>` : ''}${v.best >= state.thr ? `<span class="tag t-gold">${gbp(v.best)}</span>` : ''}`; }
+  if (fresh && auto) { lastBanner = Date.now(); $('#autoStat').innerHTML = `#${cur.pos} ${esc(v.name)}${v.owned ? `<span class="tag t-own">have ${v.have || v.owned}</span>` : '<span class="tag t-new">NEW</span>'}${v.need ? `<span class="tag t-need">${3 - v.need}/3</span>` : ''}${v.best >= state.thr ? `<span class="tag t-gold">${gbp(v.best)}</span>` : ''}`; }
   return v;
 }
 async function showYgo(hit) { await fx(); cur = { game: 'ygo', hit, det: await ygoDetails(hit), sel: null }; return renderCur(true); }
@@ -865,15 +882,18 @@ function show(html, scroll) { const r = $('#result'); r.classList.remove('on'); 
   if (scroll && !auto) r.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
 function showError(msg) { show(`<p class="err" style="margin:0">${esc(msg)}</p>`, true); }
 
-function log(e) {
-  state.hist = [e, ...state.hist.filter(h => h.key !== e.key)].slice(0, 200); drawHist();
-}
+const flagged = h => h.isNew || h.need || h.best >= state.thr;
+let saveT = 0;
+function saveBatch() { clearTimeout(saveT); saveT = setTimeout(() => db.set('batch', state.batch), 300); }
 function drawHist() {
-  const only = $('#onlyFlag').checked;
-  const list = state.hist.filter(h => !only || h.isNew || h.need || h.best >= state.thr);
-  $('#hist').innerHTML = list.map(h => `<li><span class="nm">${esc(h.name)} <span class="sub">${esc(h.code)}</span></span>
+  const only = $('#onlyFlag').checked, B = state.batch;
+  const list = B.map((h, i) => ({ ...h, pos: i + 1 })).filter(h => !only || flagged(h)).reverse();
+  $('#hist').innerHTML = list.map(h => `<li class="${flagged(h) ? 'flag' : ''}"><span class="pos">#${h.pos}</span><span class="nm">${esc(h.name)} <span class="sub">${esc(h.code)}</span></span>
     ${h.isNew ? '<span class="tag t-new">NEW</span>' : `<span class="tag t-own">have ${h.have || 1}</span>`}${h.need ? `<span class="tag t-need">${3 - h.need}/3</span>` : ''}${h.best >= state.thr ? `<span class="tag t-gold">${gbp(h.best)}</span>` : ''}</li>`).join('');
   $('#histEmpty').hidden = list.length > 0;
+  const nf = B.filter(flagged).length;
+  $('#bCount').textContent = B.length;
+  $('#bInfo').textContent = (B.length === 1 ? 'card' : 'cards') + ' in this batch' + (nf ? ` · ${nf} flagged` : '');
 }
 
 /* ---------- auto-scan ---------- */
@@ -963,6 +983,26 @@ $('#result').onclick = async e => {
            if (cur) renderCur(false); else a.outerHTML = '<p class="note ok">Marked as added.</p>'; showStatus(); }
 };
 $('#onlyFlag').onchange = drawHist;
+let resetArmed = 0;
+$('#bReset').onclick = () => {
+  if (!state.batch.length) return;
+  if (Date.now() - resetArmed > 4000) { resetArmed = Date.now(); $('#bReset').textContent = 'Click again to reset'; setTimeout(() => { $('#bReset').textContent = 'Reset batch'; }, 4000); return; }
+  resetArmed = 0; state.batch = []; saveBatch(); cur = null; $('#result').classList.remove('on'); $('#result').innerHTML = '';
+  $('#bReset').textContent = 'Reset batch'; drawHist();
+};
+$('#bUndo').onclick = () => {
+  if (!state.batch.length) return;
+  const gone = state.batch.pop(); saveBatch();
+  if (cur && cur.pos === state.batch.length + 1) { cur = null; $('#result').classList.remove('on'); }
+  drawHist(); $('#bInfo').textContent += ` · removed #${state.batch.length + 1} ${gone.name}`;
+};
+$('#bCopy').onclick = async () => {
+  const lines = state.batch.map((h, i) => ({ ...h, pos: i + 1 })).filter(flagged).map(h =>
+    `#${h.pos} ${h.name} (${h.code})${h.isNew ? ' – NEW' : ''}${h.need ? ` – have ${3 - h.need}/3` : ''}${h.best >= state.thr ? ' – ' + gbp(h.best) : ''}`);
+  const text = lines.length ? `Batch of ${state.batch.length} – flagged:\n` + lines.join('\n') : 'Nothing flagged in this batch.';
+  try { await navigator.clipboard.writeText(text); $('#bCopy').textContent = 'Copied'; } catch { $('#bCopy').textContent = 'Copy failed'; }
+  setTimeout(() => { $('#bCopy').textContent = 'Copy flagged'; }, 2000);
+};
 
 
 $('#openSet').onclick = $('#openSet2').onclick = () => $('#settings').showModal();
@@ -1003,8 +1043,8 @@ $('#clearAdded').onclick = () => { state.added = {}; db.set('added', {}); showSt
 $('#clearAll').onclick = async () => { for (const k of ['poke', 'ygo', 'added']) await db.del(k); state.poke = state.ygo = null; state.added = {}; showStatus(); };
 
 (async () => {
-  const [poke, ygo, added, thr, fxv, sets, variant, sound, cam, yFolders, y3] = await Promise.all(['poke', 'ygo', 'added', 'thr', 'fx', 'sets', 'variant', 'sound', 'cam', 'yFolders', 'y3'].map(db.get));
-  Object.assign(state, { poke, ygo, added: added || {}, thr: thr ?? 1, fx: fxv, sets, variant: variant || 'any', sound: sound ?? true, cam, yFolders: yFolders || [], y3: !!y3 });
+  const [poke, ygo, added, thr, fxv, sets, variant, sound, cam, yFolders, y3, batch] = await Promise.all(['poke', 'ygo', 'added', 'thr', 'fx', 'sets', 'variant', 'sound', 'cam', 'yFolders', 'y3', 'batch'].map(db.get));
+  Object.assign(state, { poke, ygo, added: added || {}, thr: thr ?? 1, fx: fxv, sets, variant: variant || 'any', sound: sound ?? true, cam, yFolders: yFolders || [], y3: !!y3, batch: batch || [] });
   paintYgoRow();
   loadRec().catch(() => {});
   Tesseract.createWorker('eng').then(w => { worker = worker || w; }).catch(() => {});
